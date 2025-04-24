@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Google Cloud credentials
+google-cloud-credentials.json
+*-credentials.json
+
+# Uploaded files
+/uploads
