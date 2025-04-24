@@ -1,5 +1,11 @@
 import { requireAuth } from "@/lib/auth";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { LogoutButton } from "@/components/auth/logout-button";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -7,7 +13,7 @@ import { Button } from "@/components/ui/button";
 export default async function SettingsPage() {
   const session = await requireAuth();
   const user = session.user;
-  
+
   return (
     <div className="container mx-auto py-10">
       <div className="flex items-center mb-8">
@@ -30,11 +36,15 @@ export default async function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <h3 className="font-medium text-sm text-muted-foreground mb-1">Name</h3>
+              <h3 className="font-medium text-sm text-muted-foreground mb-1">
+                Name
+              </h3>
               <p>{user?.name || "Not provided"}</p>
             </div>
             <div>
-              <h3 className="font-medium text-sm text-muted-foreground mb-1">Email</h3>
+              <h3 className="font-medium text-sm text-muted-foreground mb-1">
+                Email
+              </h3>
               <p>{user?.email || "Not provided"}</p>
             </div>
             <div className="pt-4">

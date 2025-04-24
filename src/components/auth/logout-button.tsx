@@ -13,11 +13,7 @@ export function LogoutButton() {
   };
 
   return (
-    <Button 
-      variant="destructive" 
-      onClick={handleLogout} 
-      disabled={isLoading}
-    >
+    <Button variant="destructive" onClick={handleLogout} disabled={isLoading}>
       {isLoading ? "Logging out..." : "Log out"}
     </Button>
   );

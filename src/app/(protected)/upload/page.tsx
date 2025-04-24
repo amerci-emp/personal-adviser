@@ -5,7 +5,7 @@ import { UploadForm } from "@/app/(protected)/upload/upload-form";
 
 export default async function UploadPage() {
   await requireAuth();
-  
+
   return (
     <div className="container mx-auto py-10 max-w-3xl">
       <div className="flex items-center mb-8">
@@ -16,7 +16,7 @@ export default async function UploadPage() {
         </Link>
         <h1 className="text-3xl font-bold">Upload Statement</h1>
       </div>
-      
+
       <UploadForm />
     </div>
   );

@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 // This function can be marked `async` if using `await` inside
 export default withAuth(
   // Augment the request
-  function middleware(req) {
+  function middleware(_req) {
     return NextResponse.next();
   },
   {
@@ -14,10 +14,15 @@ export default withAuth(
     pages: {
       signIn: "/",
     },
-  }
+  },
 );
 
 // Specify the paths that should be protected by this middleware
 export const config = {
-  matcher: ["/dashboard/:path*", "/settings/:path*", "/upload/:path*", "/review/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/settings/:path*",
+    "/upload/:path*",
+    "/review/:path*",
+  ],
 };

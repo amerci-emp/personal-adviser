@@ -12,11 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { signOut, useSession } from "next-auth/react";
 import { Menu } from "lucide-react";
 
@@ -45,7 +41,7 @@ export function MainHeader() {
           <Link href="/dashboard" className="font-semibold text-lg">
             Financial Adviser
           </Link>
-          
+
           {/* Desktop Navigation */}
           <nav className="ml-10 hidden md:flex items-center space-x-6">
             {routes.map((route) => (
@@ -53,9 +49,7 @@ export function MainHeader() {
                 key={route.href}
                 href={route.href}
                 className={`text-sm font-medium transition-colors hover:text-primary ${
-                  route.active
-                    ? "text-foreground"
-                    : "text-muted-foreground"
+                  route.active ? "text-foreground" : "text-muted-foreground"
                 }`}
               >
                 {route.label}
@@ -63,7 +57,7 @@ export function MainHeader() {
             ))}
           </nav>
         </div>
-        
+
         {/* Mobile Navigation */}
         <div className="md:hidden">
           <Sheet>
@@ -85,9 +79,7 @@ export function MainHeader() {
                     key={route.href}
                     href={route.href}
                     className={`text-sm font-medium transition-colors hover:text-primary ${
-                      route.active
-                        ? "text-foreground"
-                        : "text-muted-foreground"
+                      route.active ? "text-foreground" : "text-muted-foreground"
                     }`}
                   >
                     {route.label}
@@ -97,13 +89,16 @@ export function MainHeader() {
             </SheetContent>
           </Sheet>
         </div>
-        
+
         {/* User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-8 w-8 rounded-full">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={user?.image || ""} alt={user?.name || "User avatar"} />
+                <AvatarImage
+                  src={user?.image || ""}
+                  alt={user?.name || "User avatar"}
+                />
                 <AvatarFallback>{getInitials(user?.name)}</AvatarFallback>
               </Avatar>
             </Button>

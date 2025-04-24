@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     if (existingUserByEmail) {
       return NextResponse.json(
         { error: "User with this email already exists" },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
@@ -42,23 +42,23 @@ export async function POST(req: Request) {
     const { password: _, ...userWithoutPassword } = user;
 
     return NextResponse.json(
-      { 
+      {
         user: userWithoutPassword,
-        message: "User created successfully" 
+        message: "User created successfully",
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Registration error:", error);
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: error.errors[0].message },
-        { status: 400 }
+        { status: 400 },
       );
     }
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

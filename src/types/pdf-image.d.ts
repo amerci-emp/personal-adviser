@@ -1,4 +1,4 @@
-declare module 'pdf-image' {
+declare module "pdf-image" {
   export interface PDFImageOptions {
     convertOptions?: Record<string, string>;
     convertExtension?: string;
@@ -13,4 +13,4 @@ declare module 'pdf-image' {
   }
 
   export default PDFImage;
-} 
+}

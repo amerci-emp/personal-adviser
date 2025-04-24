@@ -8,6 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "lint:fix": "next lint --fix",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
+    "fix": "npm run lint:fix && npm run format",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:upload": "node scripts/test-upload-flow.js"
@@ -67,6 +70,7 @@
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "postcss": "^8.5.3",
+    "prettier": "^3.5.3",
     "prisma": "^6.6.0",
     "tailwindcss": "^4.1.4",
     "ts-jest": "^29.3.2",

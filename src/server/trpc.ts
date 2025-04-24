@@ -10,7 +10,7 @@ import { authOptions } from "@/lib/auth";
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
   const session = await getServerSession(authOptions);
-  
+
   return {
     prisma: new PrismaClient(),
     session,

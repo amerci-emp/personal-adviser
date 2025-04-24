@@ -2,7 +2,8 @@ import { PrismaClient } from "@/generated/prisma";
 
 // Prevent multiple instances in development
 declare global {
-  var prisma: PrismaClient | undefined
+  // eslint-disable-next-line no-var
+  var prisma: PrismaClient | undefined;
 }
 
 export const prisma = global.prisma || new PrismaClient();

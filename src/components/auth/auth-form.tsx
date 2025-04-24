@@ -28,18 +28,24 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address" }),
-  password: z.string().min(6, { message: "Password must be at least 6 characters" }),
+  password: z
+    .string()
+    .min(6, { message: "Password must be at least 6 characters" }),
 });
 
-const signupSchema = z.object({
-  name: z.string().min(2, { message: "Name must be at least 2 characters" }),
-  email: z.string().email({ message: "Please enter a valid email address" }),
-  password: z.string().min(6, { message: "Password must be at least 6 characters" }),
-  confirmPassword: z.string(),
-}).refine(data => data.password === data.confirmPassword, {
-  message: "Passwords do not match",
-  path: ["confirmPassword"],
-});
+const signupSchema = z
+  .object({
+    name: z.string().min(2, { message: "Name must be at least 2 characters" }),
+    email: z.string().email({ message: "Please enter a valid email address" }),
+    password: z
+      .string()
+      .min(6, { message: "Password must be at least 6 characters" }),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 type SignupFormValues = z.infer<typeof signupSchema>;
@@ -87,6 +93,7 @@ export function AuthForm() {
       router.push("/dashboard");
       router.refresh();
     } catch (error) {
+      console.error("Login error:", error);
       setError("An error occurred. Please try again.");
     } finally {
       setIsLoading(false);
@@ -132,6 +139,7 @@ export function AuthForm() {
       router.push("/dashboard");
       router.refresh();
     } catch (error) {
+      console.error("Signup error:", error);
       setError("An error occurred during registration. Please try again.");
     } finally {
       setIsLoading(false);
@@ -141,27 +149,35 @@ export function AuthForm() {
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
-        <CardTitle className="text-2xl text-center">Personal Financial Adviser</CardTitle>
+        <CardTitle className="text-2xl text-center">
+          Personal Financial Adviser
+        </CardTitle>
         <CardDescription className="text-center">
           Sign in to manage your financial statements
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "login" | "signup")}>
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as "login" | "signup")}
+        >
           <TabsList className="grid w-full grid-cols-2 mb-6">
             <TabsTrigger value="login">Login</TabsTrigger>
             <TabsTrigger value="signup">Sign Up</TabsTrigger>
           </TabsList>
-          
+
           {error && (
             <div className="bg-red-50 text-red-500 p-3 rounded-md mb-4">
               {error}
             </div>
           )}
-          
+
           <TabsContent value="login">
             <Form {...loginForm}>
-              <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
+              <form
+                onSubmit={loginForm.handleSubmit(onLoginSubmit)}
+                className="space-y-4"
+              >
                 <FormField
                   control={loginForm.control}
                   name="email"
@@ -194,10 +210,13 @@ export function AuthForm() {
               </form>
             </Form>
           </TabsContent>
-          
+
           <TabsContent value="signup">
             <Form {...signupForm}>
-              <form onSubmit={signupForm.handleSubmit(onSignupSubmit)} className="space-y-4">
+              <form
+                onSubmit={signupForm.handleSubmit(onSignupSubmit)}
+                className="space-y-4"
+              >
                 <FormField
                   control={signupForm.control}
                   name="name"
@@ -260,8 +279,8 @@ export function AuthForm() {
       </CardContent>
       <CardFooter className="flex justify-center">
         <p className="text-sm text-muted-foreground">
-          {activeTab === "login" 
-            ? "Don't have an account? Click Sign Up above." 
+          {activeTab === "login"
+            ? "Don't have an account? Click Sign Up above."
             : "Already have an account? Click Login above."}
         </p>
       </CardFooter>

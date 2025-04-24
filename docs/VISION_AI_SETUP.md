@@ -42,4 +42,4 @@ To verify the setup is working correctly:
 - Ensure the Vision API is enabled for your project
 - Check that the service account has the correct permissions
 - Verify the path to the credentials file is correct
-- Check for any firewall or network restrictions that might block API access 
+- Check for any firewall or network restrictions that might block API access

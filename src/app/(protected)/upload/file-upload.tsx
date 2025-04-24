@@ -35,13 +35,13 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
     (acceptedFiles: File[]) => {
       // Reset errors
       setErrorMessage("");
-      
+
       if (acceptedFiles.length === 0) {
         return;
       }
 
       const selectedFile = acceptedFiles[0];
-      
+
       // Validate file size
       if (selectedFile.size > MAX_FILE_SIZE) {
         setErrorMessage("File is too large. Maximum size is 10MB.");
@@ -57,20 +57,21 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
       } else {
         setFile(selectedFile);
       }
-      
+
       // Notify parent component
       onFileSelected(selectedFile);
       toast.success(`File "${selectedFile.name}" selected successfully.`);
     },
-    [onFileSelected]
+    [onFileSelected],
   );
 
-  const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
-    onDrop,
-    accept: ACCEPTED_FILE_TYPES,
-    maxSize: MAX_FILE_SIZE,
-    maxFiles: 1,
-  });
+  const { getRootProps, getInputProps, isDragActive, fileRejections } =
+    useDropzone({
+      onDrop,
+      accept: ACCEPTED_FILE_TYPES,
+      maxSize: MAX_FILE_SIZE,
+      maxFiles: 1,
+    });
 
   // Handle rejected files
   if (fileRejections.length > 0) {
@@ -78,7 +79,9 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
     if (rejection.errors[0].code === "file-too-large") {
       setErrorMessage("File is too large. Maximum size is 10MB.");
     } else if (rejection.errors[0].code === "file-invalid-type") {
-      setErrorMessage("Invalid file type. Please upload a JPEG, PNG, or PDF file.");
+      setErrorMessage(
+        "Invalid file type. Please upload a JPEG, PNG, or PDF file.",
+      );
     }
   }
 
@@ -105,16 +108,25 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
         >
           <input {...getInputProps()} data-testid="file-input" />
           <div className="flex flex-col items-center justify-center gap-3">
-            <Upload size={36} className={`${isDragActive ? "text-primary" : "text-muted-foreground"}`} />
+            <Upload
+              size={36}
+              className={`${isDragActive ? "text-primary" : "text-muted-foreground"}`}
+            />
             {isDragActive ? (
-              <p className="text-lg font-medium">Drop your statement file here</p>
+              <p className="text-lg font-medium">
+                Drop your statement file here
+              </p>
             ) : (
               <>
-                <p className="text-lg font-medium">Drag & drop your statement file here</p>
+                <p className="text-lg font-medium">
+                  Drag & drop your statement file here
+                </p>
                 <p className="text-sm text-muted-foreground">
                   or click to browse (JPEG, PNG, or PDF)
                 </p>
-                <p className="text-xs text-muted-foreground">Max file size: 10MB</p>
+                <p className="text-xs text-muted-foreground">
+                  Max file size: 10MB
+                </p>
               </>
             )}
           </div>
@@ -139,7 +151,7 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
                 <span className="sr-only">Remove file</span>
               </Button>
             </div>
-            
+
             {file.preview && (
               <div className="mt-2 relative aspect-[16/9] w-full overflow-hidden rounded-md">
                 <img
@@ -152,7 +164,7 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
                 />
               </div>
             )}
-            
+
             {status === "success" && (
               <div className="flex items-center gap-2 text-green-600">
                 <CheckCircle size={16} />
@@ -162,7 +174,7 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
           </div>
         </div>
       )}
-      
+
       {errorMessage && (
         <div className="mt-2 flex items-center gap-2 text-destructive">
           <AlertCircle size={16} />
@@ -171,4 +183,4 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
       )}
     </div>
   );
-} 
+}
