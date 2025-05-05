@@ -49,3 +49,8 @@ google-cloud-credentials.json
 
 # Prisma generated files
 /src/generated/prisma
+
+
+# Temporary files
+/tmp
+
