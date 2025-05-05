@@ -23,7 +23,7 @@ type FileWithPreview = File & {
 };
 
 interface FileUploadProps {
-  onFileSelected: (file: File) => void;
+  onFileSelected: (file: File, fileData: Blob) => void;
 }
 
 export function FileUpload({ onFileSelected }: FileUploadProps) {
@@ -58,8 +58,8 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
         setFile(selectedFile);
       }
 
-      // Notify parent component
-      onFileSelected(selectedFile);
+      // Pass file and file data to parent component
+      onFileSelected(selectedFile, selectedFile);
       toast.success(`File "${selectedFile.name}" selected successfully.`);
     },
     [onFileSelected],

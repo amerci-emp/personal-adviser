@@ -20,6 +20,7 @@ export function UploadForm() {
   const router = useRouter();
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileData, setFileData] = useState<Blob | null>(null);
 
   const uploadMutation = api.statement.upload.useMutation({
     onSuccess: () => {
@@ -35,12 +36,13 @@ export function UploadForm() {
     },
   });
 
-  const handleFileSelected = (file: File) => {
+  const handleFileSelected = (file: File, data: Blob) => {
     setSelectedFile(file);
+    setFileData(data);
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) {
+    if (!selectedFile || !fileData) {
       toast.error("Please select a file to upload");
       return;
     }
@@ -48,28 +50,11 @@ export function UploadForm() {
     setIsUploading(true);
 
     try {
-      // First, upload the file to our API
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-
-      const uploadResponse = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json();
-        throw new Error(errorData.error || "Failed to upload file");
-      }
-
-      // Get the file data from the response
-      const fileData = await uploadResponse.json();
-
-      // Then create the statement record with the file info
+      // Direct upload to Supabase via tRPC
       await uploadMutation.mutateAsync({
         filename: selectedFile.name,
         fileType: selectedFile.type,
-        fileUrl: fileData.path, // Pass the server file path
+        fileData: fileData,
       });
     } catch (error) {
       console.error("Upload error:", error);

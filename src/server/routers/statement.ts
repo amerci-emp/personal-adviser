@@ -2,6 +2,9 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { processUploadedFile } from "@/lib/file-processing";
+import { uploadToStorage } from "@/lib/supabase";
+import { v4 as uuidv4 } from "uuid";
+import path from "path";
 
 // Use string constants instead of an import for the enum
 const StatementStatus = {
@@ -11,6 +14,8 @@ const StatementStatus = {
   COMPLETED: "COMPLETED",
   FAILED: "FAILED",
 } as const;
+
+const STORAGE_BUCKET = "statements";
 
 // Mock function for Google Sheets integration
 // This will be replaced with actual Sheets API implementation
@@ -35,7 +40,7 @@ function parseTransactions(text: string): any[] {
     if (/\$\d+\.\d{2}/.test(line)) {
       transactions.push({
         description: line.trim(),
-        amount: line.match(/\$\d+\.\d{2}/)?.[0] || "",
+        amount: parseFloat((line.match(/\$\d+\.\d{2}/)?.[0] || "").replace('$', '')),
         date: new Date().toISOString(), // Placeholder - would extract actual date
       });
     }
@@ -75,6 +80,7 @@ export const statementRouter = createTRPCRouter({
         filename: z.string(),
         fileType: z.string(),
         fileUrl: z.string().optional(),
+        fileData: z.instanceof(Blob).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -89,19 +95,63 @@ export const statementRouter = createTRPCRouter({
         `Statement upload started: ${input.filename} (${input.fileType})`,
       );
 
+      let storageUrl: string | undefined = input.fileUrl;
+      let storageBucket: string | undefined = undefined;
+      let storageFilePath: string | undefined = undefined;
+
+      // If file data is provided, upload to Supabase Storage
+      if (input.fileData) {
+        try {
+          // Generate a unique filename
+          const fileExt = path.extname(input.filename);
+          const fileName = `${ctx.session.user.id}/${uuidv4()}${fileExt}`;
+          
+          console.log(`Uploading file to Supabase Storage: ${fileName}`);
+          
+          const uploadResult = await uploadToStorage(
+            STORAGE_BUCKET,
+            fileName,
+            input.fileData,
+            input.fileType
+          );
+          
+          if (uploadResult.error) {
+            throw new Error(`Failed to upload to storage: ${uploadResult.error.message}`);
+          }
+          
+          if (uploadResult.url) {
+            storageUrl = uploadResult.url;
+            storageBucket = STORAGE_BUCKET;
+            storageFilePath = fileName;
+            console.log(`File uploaded to Supabase: ${storageUrl}`);
+          } else {
+            throw new Error("Upload succeeded but no URL was returned");
+          }
+        } catch (error) {
+          console.error("Error uploading to Supabase:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: `Failed to upload file: ${error instanceof Error ? error.message : String(error)}`,
+          });
+        }
+      }
+
       // Create the statement record
       const statement = await ctx.prisma.statement.create({
         data: {
           userId: ctx.session.user.id,
           filename: input.filename,
           status: StatementStatus.UPLOADED,
+          storageUrl,
+          storageBucket,
+          storageFilePath,
         },
       });
 
       console.log(`Statement record created: ${statement.id}`);
 
       // If this is just metadata without a file, return early
-      if (!input.fileUrl) {
+      if (!storageUrl) {
         console.log("No file URL provided - skipping OCR processing");
         return statement;
       }
@@ -115,9 +165,9 @@ export const statementRouter = createTRPCRouter({
         console.log(`Statement status updated to PROCESSING`);
 
         // Process the statement with OCR
-        console.log(`Initiating OCR processing for file: ${input.fileUrl}`);
+        console.log(`Initiating OCR processing for file: ${storageUrl}`);
         const processingResult = await processUploadedFile(
-          input.fileUrl,
+          storageUrl,
           input.fileType,
         );
 
@@ -135,10 +185,23 @@ export const statementRouter = createTRPCRouter({
           // Parse transactions from the text
           const transactions = parseTransactions(processingResult.text);
 
-          // Upload transactions to Google Sheets instead of storing in our database
-          await saveToGoogleSheets(ctx.session.user.id, transactions);
+          // Save transactions to database with PostgreSQL decimal type
+          const dbTransactions = await Promise.all(
+            transactions.map(async (transaction) => {
+              return ctx.prisma.transaction.create({
+                data: {
+                  statementId: statement.id,
+                  description: transaction.description,
+                  amount: transaction.amount,
+                  transactionDate: transaction.date ? new Date(transaction.date) : null,
+                  originalText: transaction.description,
+                  needsReview: true,
+                },
+              });
+            })
+          );
 
-          console.log(`Transactions saved to Google Sheets`);
+          console.log(`${dbTransactions.length} transactions saved to database`);
         }
 
         // Update the statement status to completed
@@ -149,10 +212,6 @@ export const statementRouter = createTRPCRouter({
             processedTimestamp: new Date(),
           },
         });
-
-        // Clean up the uploaded file if desired
-        // Uncomment the next line to delete the original file after processing
-        // await cleanupTemporaryFiles(input.fileUrl);
 
         return updatedStatement;
       } catch (error) {
