@@ -2,7 +2,13 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+First, set up your environment:
+
+1. Copy `.env.template` to `.env.local` and fill in your credentials
+2. Create a Supabase project at [supabase.com](https://supabase.com)
+3. Set up your database and storage (see Supabase Setup below)
+
+Then, run the development server:
 
 ```bash
 npm run dev
@@ -19,6 +25,42 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Supabase Setup
+
+This project uses Supabase for database and storage. Follow these steps to set up your Supabase project:
+
+1. Create a new project at [supabase.com](https://supabase.com)
+2. Get your project URL and API keys from the Supabase dashboard
+3. Add them to your `.env.local` file:
+
+```bash
+# Database URL - Replace with your Supabase PostgreSQL connection string
+DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres"
+
+# Supabase credentials
+NEXT_PUBLIC_SUPABASE_URL="https://[YOUR-PROJECT-REF].supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="[YOUR-SUPABASE-ANON-KEY]"
+SUPABASE_SERVICE_ROLE_KEY="[YOUR-SUPABASE-SERVICE-ROLE-KEY]"
+```
+
+4. Run the Supabase setup script to create the required storage buckets:
+
+```bash
+node scripts/setup-supabase.js
+```
+
+5. Generate the Prisma client:
+
+```bash
+npx prisma generate
+```
+
+6. Apply the database schema:
+
+```bash
+npx prisma db push
+```
 
 ## Code Quality
 

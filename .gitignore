@@ -46,3 +46,6 @@ google-cloud-credentials.json
 
 # Uploaded files
 /uploads
+
+# Prisma generated files
+/src/generated/prisma
