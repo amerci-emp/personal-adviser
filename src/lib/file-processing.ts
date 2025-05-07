@@ -27,10 +27,32 @@ export async function processUploadedFile(
     if (filePathOrUrl.startsWith('http')) {
       try {
         console.log('Processing file from URL');
-        const response = await fetch(filePathOrUrl);
+        
+        // Add authorization header if it's a Supabase URL and not already public
+        const headers: Record<string, string> = {};
+        if (
+          filePathOrUrl.includes('supabase') && 
+          !filePathOrUrl.includes('/public/') &&
+          process.env.SUPABASE_SERVICE_ROLE_KEY
+        ) {
+          // Use the service role key for authorization
+          headers['Authorization'] = `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`;
+        }
+        
+        // For debugging
+        console.log(`Fetching URL: ${filePathOrUrl.replace(/([^:]\/)\/+/g, "$1")}`);
+        
+        // Clean up double slashes in URL (except after protocol)
+        const cleanUrl = filePathOrUrl.replace(/([^:]\/)\/+/g, "$1");
+        
+        const response = await fetch(cleanUrl, { headers });
         
         if (!response.ok) {
-          throw new Error(`Failed to fetch file: ${response.statusText}`);
+          // More detailed error message
+          console.error(`Fetch failed with status ${response.status}: ${response.statusText}`);
+          console.error(`URL: ${cleanUrl}`);
+          
+          throw new Error(`Failed to fetch file: ${response.statusText} (${response.status})`);
         }
         
         const arrayBuffer = await response.arrayBuffer();
@@ -48,16 +70,16 @@ export async function processUploadedFile(
       try {
         await fs.access(filePathOrUrl);
         const stats = await fs.stat(filePathOrUrl);
-        console.log(`File exists and is accessible. Size: ${stats.size} bytes`);
+      console.log(`File exists and is accessible. Size: ${stats.size} bytes`);
         fileContent = await fs.readFile(filePathOrUrl);
-      } catch (error) {
-        console.error(
-          `File access error: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        return {
-          success: false,
-          error: `File not found or not accessible: ${error instanceof Error ? error.message : String(error)}`,
-        };
+    } catch (error) {
+      console.error(
+        `File access error: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return {
+        success: false,
+        error: `File not found or not accessible: ${error instanceof Error ? error.message : String(error)}`,
+      };
       }
     }
 
@@ -70,6 +92,13 @@ export async function processUploadedFile(
       let needsCleanup = false;
 
       if (filePathOrUrl.startsWith('http')) {
+        // Create temp directory if it doesn't exist
+        try {
+          await fs.mkdir('/tmp', { recursive: true });
+        } catch (err) {
+          console.log('Temp directory already exists or could not be created');
+        }
+        
         tempFilePath = `/tmp/temp-statement-${Date.now()}.${fileType.split('/')[1] || 'file'}`;
         await fs.writeFile(tempFilePath, fileContent);
         needsCleanup = true;
@@ -79,21 +108,21 @@ export async function processUploadedFile(
       try {
         const extractedText = await processStatement(tempFilePath, fileType);
 
-        if (!extractedText || extractedText.trim().length === 0) {
-          console.warn("No text extracted from file");
-          return {
-            success: false,
-            error: "No text could be extracted from the file",
-          };
-        }
-
-        console.log(
-          `Successfully extracted ${extractedText.length} characters of text`,
-        );
+      if (!extractedText || extractedText.trim().length === 0) {
+        console.warn("No text extracted from file");
         return {
-          success: true,
-          text: extractedText,
+          success: false,
+          error: "No text could be extracted from the file",
         };
+      }
+
+      console.log(
+        `Successfully extracted ${extractedText.length} characters of text`,
+      );
+      return {
+        success: true,
+        text: extractedText,
+      };
       } finally {
         // Clean up temporary file if created
         if (needsCleanup) {

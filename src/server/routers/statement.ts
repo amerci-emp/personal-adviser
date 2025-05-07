@@ -1,12 +1,10 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { TRPCError } from "@trpc/server";
 import { processUploadedFile } from "@/lib/file-processing";
-import { uploadToStorage } from "@/lib/supabase";
-import { v4 as uuidv4 } from "uuid";
-import path from "path";
+import { extractAccountInfo, extractStatementPeriod } from "@/lib/account-extractor";
 
-// Use string constants instead of an import for the enum
+// Use string constants for the enum
 const StatementStatus = {
   UPLOADED: "UPLOADED",
   PROCESSING: "PROCESSING",
@@ -68,6 +66,9 @@ export const statementRouter = createTRPCRouter({
         uploadTimestamp: "desc",
       },
       take: 5,
+      include: {
+        account: true,
+      },
     });
 
     return statements;
@@ -79,157 +80,252 @@ export const statementRouter = createTRPCRouter({
       z.object({
         filename: z.string(),
         fileType: z.string(),
-        fileUrl: z.string().optional(),
-        fileData: z.instanceof(Blob).optional(),
-      }),
+        fileUrl: z.string().url(),
+        accountId: z.string().optional(), // Optional: If user already selected an account
+      })
     )
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.session.user.id) {
+      try {
+        // Create a record in the database to track the statement
+        const statement = await ctx.prisma.statement.create({
+          data: {
+            filename: input.filename,
+            userId: ctx.session.user.id,
+            status: StatementStatus.UPLOADED,
+            storageUrl: input.fileUrl,
+            accountId: input.accountId, // If user pre-selected an account
+          },
+        });
+
+        // Start processing the file in the background
+        void (async () => {
+          try {
+            // Update status to processing
+            await ctx.prisma.statement.update({
+              where: { id: statement.id },
+              data: { status: StatementStatus.PROCESSING },
+            });
+
+            // Process the file with Vision AI
+            const processingResult = await processUploadedFile(
+              input.fileUrl,
+              input.fileType
+            );
+
+            if (!processingResult.success || !processingResult.text) {
+              throw new Error(
+                processingResult.error || "Failed to process statement text"
+              );
+            }
+
+            // Extract account information from text
+            const accountInfo = extractAccountInfo(processingResult.text);
+            
+            // Extract statement period
+            const periodInfo = extractStatementPeriod(processingResult.text);
+
+            // If no account ID was specified, try to find or create a matching bank account
+            let accountId = input.accountId;
+            
+            if (!accountId && accountInfo.lastFourDigits && accountInfo.financialInstitution) {
+              // Try to find a matching account
+              const existingAccount = await ctx.prisma.bankAccount.findFirst({
+                where: {
+                  userId: ctx.session.user.id,
+                  financialInstitution: accountInfo.financialInstitution,
+                  lastFourDigits: accountInfo.lastFourDigits,
+                },
+              });
+
+              if (existingAccount) {
+                // Use the existing account
+                accountId = existingAccount.id;
+                
+                // Update the account balance if extracted
+                if (accountInfo.balance !== undefined) {
+                  await ctx.prisma.bankAccount.update({
+                    where: { id: existingAccount.id },
+                    data: { balance: accountInfo.balance.toString() },
+                  });
+                }
+              } else {
+                // Create a new bank account
+                const newAccount = await ctx.prisma.bankAccount.create({
+                  data: {
+                    userId: ctx.session.user.id,
+                    name: accountInfo.accountName || `${accountInfo.financialInstitution} Account`,
+                    financialInstitution: accountInfo.financialInstitution,
+                    accountType: accountInfo.accountType || "OTHER",
+                    lastFourDigits: accountInfo.lastFourDigits,
+                    balance: accountInfo.balance !== undefined ? accountInfo.balance.toString() : null,
+                  },
+                });
+                
+                accountId = newAccount.id;
+              }
+            }
+
+            // Update the statement with extracted information
+            await ctx.prisma.statement.update({
+              where: { id: statement.id },
+              data: {
+                accountId,
+                status: StatementStatus.COMPLETED,
+                processedTimestamp: new Date(),
+                periodStart: periodInfo.start,
+                periodEnd: periodInfo.end,
+              },
+            });
+
+            console.log(`Statement ${statement.id} processed successfully`);
+          } catch (error) {
+            console.error("Error processing statement:", error);
+            
+            // Update statement with error
+            await ctx.prisma.statement.update({
+              where: { id: statement.id },
+              data: {
+                status: StatementStatus.FAILED,
+                errorMessage: error instanceof Error ? error.message : "Unknown error",
+                processedTimestamp: new Date(),
+              },
+            });
+          }
+        })();
+
+        // Immediately return the statement ID for the client
+        return {
+          success: true,
+          statementId: statement.id,
+        };
+      } catch (error) {
+        console.error("Error uploading statement:", error);
         throw new TRPCError({
-          code: "UNAUTHORIZED",
-          message: "User ID is not available",
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to upload statement",
         });
       }
+    }),
 
-      console.log(
-        `Statement upload started: ${input.filename} (${input.fileType})`,
-      );
-
-      let storageUrl: string | undefined = input.fileUrl;
-      let storageBucket: string | undefined = undefined;
-      let storageFilePath: string | undefined = undefined;
-
-      // If file data is provided, upload to Supabase Storage
-      if (input.fileData) {
-        try {
-          // Generate a unique filename
-          const fileExt = path.extname(input.filename);
-          const fileName = `${ctx.session.user.id}/${uuidv4()}${fileExt}`;
-          
-          console.log(`Uploading file to Supabase Storage: ${fileName}`);
-          
-          const uploadResult = await uploadToStorage(
-            STORAGE_BUCKET,
-            fileName,
-            input.fileData,
-            input.fileType
-          );
-          
-          if (uploadResult.error) {
-            throw new Error(`Failed to upload to storage: ${uploadResult.error.message}`);
-          }
-          
-          if (uploadResult.url) {
-            storageUrl = uploadResult.url;
-            storageBucket = STORAGE_BUCKET;
-            storageFilePath = fileName;
-            console.log(`File uploaded to Supabase: ${storageUrl}`);
-          } else {
-            throw new Error("Upload succeeded but no URL was returned");
-          }
-        } catch (error) {
-          console.error("Error uploading to Supabase:", error);
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: `Failed to upload file: ${error instanceof Error ? error.message : String(error)}`,
-          });
-        }
-      }
-
-      // Create the statement record
-      const statement = await ctx.prisma.statement.create({
-        data: {
+  // Process an existing statement
+  process: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const statement = await ctx.prisma.statement.findFirst({
+        where: {
+          id: input.id,
           userId: ctx.session.user.id,
-          filename: input.filename,
-          status: StatementStatus.UPLOADED,
-          storageUrl,
-          storageBucket,
-          storageFilePath,
         },
       });
 
-      console.log(`Statement record created: ${statement.id}`);
-
-      // If this is just metadata without a file, return early
-      if (!storageUrl) {
-        console.log("No file URL provided - skipping OCR processing");
-        return statement;
+      if (!statement) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Statement not found",
+        });
       }
 
-      try {
-        // Update status to processing
-        await ctx.prisma.statement.update({
-          where: { id: statement.id },
-          data: { status: StatementStatus.PROCESSING },
+      if (!statement.storageUrl) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Statement has no storage URL",
         });
-        console.log(`Statement status updated to PROCESSING`);
+      }
 
-        // Process the statement with OCR
-        console.log(`Initiating OCR processing for file: ${storageUrl}`);
+      // Update status to processing
+      await ctx.prisma.statement.update({
+        where: { id: statement.id },
+        data: { status: StatementStatus.PROCESSING },
+      });
+
+      try {
+        // Process the file with Vision AI
+        const fileType = statement.filename.endsWith(".pdf") ? "application/pdf" : "image/jpeg";
         const processingResult = await processUploadedFile(
-          storageUrl,
-          input.fileType,
+          statement.storageUrl,
+          fileType
         );
 
-        if (!processingResult.success) {
-          console.error(`OCR processing failed: ${processingResult.error}`);
+        if (!processingResult.success || !processingResult.text) {
           throw new Error(
-            processingResult.error || "Failed to process statement",
+            processingResult.error || "Failed to process statement text"
           );
         }
 
-        console.log(`OCR processing successful`);
+        // Extract account information from text
+        const accountInfo = extractAccountInfo(processingResult.text);
+        
+        // Extract statement period
+        const periodInfo = extractStatementPeriod(processingResult.text);
 
-        // Process the extracted text in memory (never stored in DB)
-        if (processingResult.text) {
-          // Parse transactions from the text
-          const transactions = parseTransactions(processingResult.text);
+        // If no account ID was specified, try to find or create a matching bank account
+        let accountId = statement.accountId;
+        
+        if (!accountId && accountInfo.lastFourDigits && accountInfo.financialInstitution) {
+          // Try to find a matching account
+          const existingAccount = await ctx.prisma.bankAccount.findFirst({
+            where: {
+              userId: ctx.session.user.id,
+              financialInstitution: accountInfo.financialInstitution,
+              lastFourDigits: accountInfo.lastFourDigits,
+            },
+          });
 
-          // Save transactions to database with PostgreSQL decimal type
-          const dbTransactions = await Promise.all(
-            transactions.map(async (transaction) => {
-              return ctx.prisma.transaction.create({
-                data: {
-                  statementId: statement.id,
-                  description: transaction.description,
-                  amount: transaction.amount,
-                  transactionDate: transaction.date ? new Date(transaction.date) : null,
-                  originalText: transaction.description,
-                  needsReview: true,
-                },
+          if (existingAccount) {
+            // Use the existing account
+            accountId = existingAccount.id;
+            
+            // Update the account balance if extracted
+            if (accountInfo.balance !== undefined) {
+              await ctx.prisma.bankAccount.update({
+                where: { id: existingAccount.id },
+                data: { balance: accountInfo.balance.toString() },
               });
-            })
-          );
-
-          console.log(`${dbTransactions.length} transactions saved to database`);
+            }
+          } else {
+            // Create a new bank account
+            const newAccount = await ctx.prisma.bankAccount.create({
+              data: {
+                userId: ctx.session.user.id,
+                name: accountInfo.accountName || `${accountInfo.financialInstitution} Account`,
+                financialInstitution: accountInfo.financialInstitution,
+                accountType: accountInfo.accountType || "OTHER",
+                lastFourDigits: accountInfo.lastFourDigits,
+                balance: accountInfo.balance !== undefined ? accountInfo.balance.toString() : null,
+              },
+            });
+            
+            accountId = newAccount.id;
+          }
         }
 
-        // Update the statement status to completed
+        // Update the statement with extracted information
         const updatedStatement = await ctx.prisma.statement.update({
           where: { id: statement.id },
           data: {
+            accountId,
             status: StatementStatus.COMPLETED,
             processedTimestamp: new Date(),
+            periodStart: periodInfo.start,
+            periodEnd: periodInfo.end,
           },
         });
 
         return updatedStatement;
       } catch (error) {
-        console.error("Statement processing error:", error);
-
-        // Update the statement with error
-        const errorStatement = await ctx.prisma.statement.update({
+        console.error("Error processing statement:", error);
+        
+        // Update statement with error
+        const failedStatement = await ctx.prisma.statement.update({
           where: { id: statement.id },
           data: {
             status: StatementStatus.FAILED,
-            errorMessage:
-              error instanceof Error ? error.message : "Unknown error",
+            errorMessage: error instanceof Error ? error.message : "Unknown error",
             processedTimestamp: new Date(),
           },
         });
-
-        console.log(`Statement status updated to FAILED due to error`);
-        return errorStatement;
+        
+        return failedStatement;
       }
     }),
 
@@ -249,6 +345,9 @@ export const statementRouter = createTRPCRouter({
           id: input.id,
           userId: ctx.session.user.id, // Ensure user can only access their own statements
         },
+        include: {
+          account: true,
+        },
       });
 
       if (!statement) {
@@ -259,5 +358,58 @@ export const statementRouter = createTRPCRouter({
       }
 
       return statement;
+    }),
+    
+  // Link a statement to a bank account
+  linkToAccount: protectedProcedure
+    .input(z.object({ 
+      statementId: z.string(),
+      accountId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.session.user.id) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "User ID is not available",
+        });
+      }
+      
+      // Verify statement belongs to user
+      const statement = await ctx.prisma.statement.findFirst({
+        where: {
+          id: input.statementId,
+          userId: ctx.session.user.id,
+        },
+      });
+      
+      if (!statement) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Statement not found",
+        });
+      }
+      
+      // Verify account belongs to user
+      const account = await ctx.prisma.bankAccount.findFirst({
+        where: {
+          id: input.accountId,
+          userId: ctx.session.user.id,
+        },
+      });
+      
+      if (!account) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Bank account not found",
+        });
+      }
+      
+      // Link statement to account
+      const updatedStatement = await ctx.prisma.statement.update({
+        where: { id: input.statementId },
+        data: { accountId: input.accountId },
+      });
+      
+      return updatedStatement;
     }),
 });

@@ -1,9 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,101 +13,127 @@ import {
 } from "@/components/ui/card";
 import { FileUpload } from "./file-upload";
 import { api } from "@/trpc/client";
+import { toast } from "sonner";
+import { FileCheck, Upload, Loader2 } from "lucide-react";
 
 export function UploadForm() {
   const router = useRouter();
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [fileData, setFileData] = useState<Blob | null>(null);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
 
   const uploadMutation = api.statement.upload.useMutation({
     onSuccess: () => {
-      toast.success("Statement uploaded successfully");
-
-      // Redirect to dashboard after successful upload
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 1500);
+      toast.success("Statement uploaded successfully", {
+        description: "Your statement is now processing. You can view its status on the dashboard.",
+        duration: 5000,
+      });
     },
-    onError: (error) => {
-      toast.error(`Upload failed: ${error.message}`);
+    onError: (error: Error) => {
+      toast.error("Failed to upload statement", {
+        description: error.message || "Something went wrong. Please try again.",
+        duration: 5000,
+      });
+      router.push("/dashboard");
     },
   });
 
-  const handleFileSelected = (file: File, data: Blob) => {
+  const handleFileSelected = (file: File, fileData: Blob) => {
     setSelectedFile(file);
-    setFileData(data);
   };
 
   const handleUpload = async () => {
-    if (!selectedFile || !fileData) {
-      toast.error("Please select a file to upload");
+    if (!selectedFile) {
+      toast.error("No file selected", {
+        description: "Please select a file to upload.",
+      });
       return;
     }
 
     setIsUploading(true);
 
     try {
-      // Direct upload to Supabase via tRPC
-      await uploadMutation.mutateAsync({
+      // Use FormData approach for file upload
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      // Toast notification before redirecting
+      toast.info("Uploading statement...", {
+        description: "You'll be redirected to the dashboard",
+        duration: 3000,
+      });
+
+      // Upload file to temporary endpoint first
+      const response = await fetch("/api/upload-temp", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to upload file");
+      }
+
+      const { fileUrl } = await response.json();
+
+      // Immediately redirect to dashboard
+      router.push("/dashboard");
+
+      // Create the statement record in the background
+      uploadMutation.mutate({
         filename: selectedFile.name,
         fileType: selectedFile.type,
-        fileData: fileData,
+        fileUrl: fileUrl,
       });
     } catch (error) {
-      console.error("Upload error:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to upload file",
-      );
-    } finally {
       setIsUploading(false);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to upload file"
+      );
     }
   };
 
   return (
-    <Card className="w-full">
+    <Card className="max-w-2xl mx-auto">
       <CardHeader>
-        <CardTitle className="text-2xl">Upload Financial Statement</CardTitle>
+        <CardTitle>Upload Financial Statement</CardTitle>
         <CardDescription>
-          Upload your bank or credit card statement for processing and
-          categorization
+          Upload your bank or credit card statement to track your expenses
         </CardDescription>
       </CardHeader>
+
       <CardContent>
         <FileUpload onFileSelected={handleFileSelected} />
 
         <div className="mt-6 space-y-2">
-          <h3 className="text-sm font-medium">Tips for best results:</h3>
-          <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-            <li>
-              Upload high-quality scanned documents or official digital
-              statements
-            </li>
-            <li>Ensure all transaction details are clearly visible</li>
-            <li>
-              For PDFs, make sure text is selectable (not just images of text)
-            </li>
-            <li>Remove any personal identifying information if desired</li>
+          <h3 className="text-sm font-medium flex items-center gap-1">
+            <FileCheck className="h-4 w-4" />
+            Tips for best results
+          </h3>
+          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+            <li>Use PDF statements directly from your bank</li>
+            <li>Ensure the PDF is not password protected</li>
+            <li>Statements should include account details and transaction history</li>
           </ul>
         </div>
       </CardContent>
-      <CardFooter className="flex justify-end gap-4">
+
+      <CardFooter className="flex justify-between">
         <Button
           variant="outline"
           onClick={() => router.push("/dashboard")}
-          disabled={isUploading || uploadMutation.isPending}
+          disabled={isUploading}
         >
           Cancel
         </Button>
-        <Button
-          onClick={handleUpload}
-          disabled={!selectedFile || isUploading || uploadMutation.isPending}
+        <Button 
+          onClick={handleUpload} 
+          disabled={!selectedFile || isUploading}
           className="gap-2"
         >
-          {isUploading || uploadMutation.isPending ? (
+          {isUploading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Processing...
+              Uploading...
             </>
           ) : (
             <>
