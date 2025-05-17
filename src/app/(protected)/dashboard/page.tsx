@@ -199,13 +199,13 @@ export default async function DashboardPage() {
 
       {hasError && (
         <Card className="mb-6 border-destructive">
-          <CardHeader>
+        <CardHeader>
             <CardTitle className="text-destructive">Database Error</CardTitle>
-            <CardDescription>
+          <CardDescription>
               There was a problem fetching your financial data
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
             <div className="p-4 border border-destructive/20 bg-destructive/10 rounded-md">
               <p className="text-destructive mb-1">Error details:</p>
               <pre className="text-sm overflow-auto p-2 bg-background/80 rounded">
@@ -306,8 +306,8 @@ export default async function DashboardPage() {
                                     </div>
                                   </div>
                                 ))}
-                              </div>
-                            </div>
+              </div>
+            </div>
                           ) : (
                             <div className="mt-3 pt-3 border-t text-sm text-muted-foreground text-center">
                               No statements available for this account
@@ -350,12 +350,12 @@ export default async function DashboardPage() {
                   <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
                   <h3 className="text-base font-medium">No statements uploaded yet</h3>
                   <p className="text-sm text-muted-foreground mt-1 mb-4">
-                    Upload your first financial statement to get started.
-                  </p>
-                  <Link href="/upload">
+              Upload your first financial statement to get started.
+            </p>
+            <Link href="/upload">
                     <Button variant="outline" size="sm">Upload Statement</Button>
-                  </Link>
-                </div>
+            </Link>
+          </div>
               ) : (
                 <>
                   {/* Status summary */}
@@ -433,7 +433,7 @@ export default async function DashboardPage() {
                   </div>
                 </>
               )}
-            </CardContent>
+        </CardContent>
             
             {recentStatements.length > 0 && (
               <CardFooter className="flex justify-between items-center">
@@ -448,7 +448,7 @@ export default async function DashboardPage() {
                 </Link>
               </CardFooter>
             )}
-          </Card>
+      </Card>
         </div>
       </div>
     </div>
