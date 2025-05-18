@@ -4,6 +4,8 @@
  * Setup script for Supabase
  * 
  * This script initializes the Supabase storage buckets needed for the application
+ * and makes them public for easier access
+ * 
  * Run it with: node scripts/setup-supabase.js
  */
 
@@ -26,7 +28,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 const BUCKETS = [
   {
     name: 'statements',
-    public: false,
+    public: true, // Make this bucket public
     allowedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'],
     fileSizeLimit: 10485760, // 10MB
   }
@@ -37,7 +39,7 @@ async function setupStorageBuckets() {
   console.log('Setting up Supabase storage buckets...');
 
   for (const bucket of BUCKETS) {
-    console.log(`Checking bucket: ${bucket.name}`);
+    console.log(`Setting up bucket: ${bucket.name}`);
     
     // Check if bucket exists
     const { data: existingBuckets, error: listError } = await supabase.storage.listBuckets();
@@ -51,9 +53,24 @@ async function setupStorageBuckets() {
     
     if (bucketExists) {
       console.log(`Bucket '${bucket.name}' already exists.`);
+      
+      // Update bucket to be public if needed
+      try {
+        const { data, error } = await supabase.storage.updateBucket(bucket.name, {
+          public: bucket.public
+        });
+        
+        if (error) {
+          console.error(`Error updating bucket '${bucket.name}':`, error.message);
+        } else {
+          console.log(`Updated bucket '${bucket.name}' to be public: ${bucket.public}`);
+        }
+      } catch (error) {
+        console.error(`Failed to update bucket '${bucket.name}':`, error);
+      }
     } else {
       // Create the bucket
-      const { data, error } = await supabase.storage.createBucket(bucket.name, {
+      const { error } = await supabase.storage.createBucket(bucket.name, {
         public: bucket.public,
         allowedMimeTypes: bucket.allowedMimeTypes,
         fileSizeLimit: bucket.fileSizeLimit,
@@ -62,16 +79,7 @@ async function setupStorageBuckets() {
       if (error) {
         console.error(`Error creating bucket '${bucket.name}':`, error.message);
       } else {
-        console.log(`Created bucket '${bucket.name}' successfully.`);
-      }
-    }
-    
-    // Set up bucket policies
-    if (bucket.public) {
-      // For public buckets, allow anyone to read files
-      const { error: policyError } = await supabase.storage.from(bucket.name).createSignedUrl('policy.txt', 3600);
-      if (policyError) {
-        console.log(`Setting up public access policy for bucket '${bucket.name}'...`);
+        console.log(`Created bucket '${bucket.name}' successfully with public: ${bucket.public}`);
       }
     }
   }
