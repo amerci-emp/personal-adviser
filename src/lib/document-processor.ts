@@ -1,8 +1,28 @@
-import { DocumentProcessorServiceClient, protos } from "@google-cloud/documentai";
+// Try to import DocumentAI, but provide mock if it's not available
+import { protos } from "@google-cloud/documentai";
 import { promises as fs } from "fs";
 import path from "path";
 import crypto from "crypto";
 import dotenv from 'dotenv';
+
+let documentai: any;
+let DocumentProcessorServiceClient: any;
+let documentAiAvailable = true;
+
+try {
+  documentai = require("@google-cloud/documentai");
+  DocumentProcessorServiceClient = documentai.DocumentProcessorServiceClient;
+} catch (error) {
+  console.warn("@google-cloud/documentai module not available, using mock implementation");
+  documentAiAvailable = false;
+  // Create a mock DocumentProcessorServiceClient
+  DocumentProcessorServiceClient = class MockDocumentProcessorServiceClient {
+    async processDocument() {
+      console.warn("Using mock DocumentProcessorServiceClient - document processing not available");
+      return [{ document: null }];
+    }
+  };
+}
 
 dotenv.config();
 
@@ -62,7 +82,7 @@ export interface ExtractionTemplate {
  * Provides centralized caching and extraction methods
  */
 export class DocumentProcessor {
-  private client: DocumentProcessorServiceClient | null = null;
+  private client: any = null;
   private processorName: string | null = null;
   
   // Document storage
@@ -77,7 +97,13 @@ export class DocumentProcessor {
   /**
    * Initialize the Document AI client
    */
-  private initDocumentAiClient(processorId: string): DocumentProcessorServiceClient {
+  private initDocumentAiClient(processorId: string): any {
+    if (!documentAiAvailable) {
+      console.warn("Document AI is not available in this environment. Using mock client.");
+      this.client = new DocumentProcessorServiceClient();
+      return this.client;
+    }
+
     if (!GCLOUD_PROJECT_ID || !GCLOUD_LOCATION || !processorId) {
       throw new Error(
         "Google Cloud Document AI configuration (PROJECT_ID, LOCATION, or PROCESSOR_ID) is missing in environment variables."
@@ -121,6 +147,12 @@ export class DocumentProcessor {
    */
   public async processDocument(filePath: string, mimeType: string, processorId?: string): Promise<boolean> {
     console.log(`Processing document: ${filePath}, MIME Type: ${mimeType}`);
+    
+    // If Document AI is not available, return a mock success but log warning
+    if (!documentAiAvailable) {
+      console.warn("Document AI is not available. Document processing will be skipped.");
+      return false;
+    }
     
     try {
       this.filePath = filePath;
@@ -211,7 +243,7 @@ export class DocumentProcessor {
         console.warn(`Failed to cache document: ${saveError}`);
       }
       
-      console.log(`Successfully processed document with ${this.document.pages?.length} pages`);
+      console.log(`Successfully processed document with ${this.document?.pages?.length || 0} pages`);
       return true;
     
     } catch (error) {
