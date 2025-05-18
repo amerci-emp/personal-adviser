@@ -27,6 +27,7 @@ export interface Account {
   // Organized transaction categories
   allTransactions?: {
     deposits: Transaction[];
+    atmDebit: Transaction[];
     withdrawals: Transaction[];
     checks: Transaction[];
     fees: Transaction[];
@@ -112,6 +113,11 @@ export abstract class BankStatementParser {
           // Include the transactions by category
           transactions: account.allTransactions ? {
             deposits: account.allTransactions.deposits?.map(t => ({
+              date: t.date,
+              description: t.description,
+              amount: t.amount
+            })) || [],
+            atmDebit: account.allTransactions.atmDebit?.map(t => ({
               date: t.date,
               description: t.description,
               amount: t.amount

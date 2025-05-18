@@ -308,7 +308,7 @@ export class DocumentProcessor {
     }
     
     // Process page
-    console.log(`--------------------- PROCESSING PAGE ${pageNumber}`);
+    console.log(`\n--------------------- PROCESSING PAGE ${pageNumber}`);
     const pageIndex = pageNumber - 1; // Convert to 0-indexed
     const page = this.document.pages[pageIndex];
     const fullText = this.document.text || "";
@@ -373,16 +373,6 @@ export class DocumentProcessor {
         })),
         tables: processedTables
       };
-      
-      try {
-        await fs.writeFile(
-          path.join(process.cwd(), outputFilename), 
-          JSON.stringify(serializedPage, null, 2)
-        );
-        console.log(`Page ${pageNumber} data saved to ${outputFilename}`);
-      } catch (error) {
-        console.warn(`Failed to save debug info: ${error}`);
-      }
     }
     
     return processedPage;

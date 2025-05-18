@@ -2,6 +2,16 @@ import { BankStatementParser, ProcessedStatementData, Account, Transaction } fro
 import { DocumentProcessor, ProcessedPage, ProcessedTable } from '../document-processor';
 import { dateExtractionTemplate, accountExtractionTemplate, bankOfAmericaTemplate } from '../extraction-templates';
 
+// Define custom transaction type to include ATM_DEBIT
+export interface BofATransaction extends Omit<Transaction, 'type'> {
+  date?: string | null;
+  description?: string | null;
+  amount?: number | null;
+  type: 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER' | 'ATM_DEBIT';
+  rawRowText?: string;
+  category?: string;
+}
+
 /**
  * Bank of America statement parser
  */
@@ -98,7 +108,7 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
       * Process a combined statement page (with multiple accounts)
       */
    private async processCombinedStatementPage(page: ProcessedPage, data: ProcessedStatementData): Promise<void> {
-      console.log("------------- PROCESSING COMBINED STATEMENT PAGE")
+      console.log("\n------------------------------------ PROCESSING COMBINED STATEMENT PAGE")
       if (!this.documentProcessor) return;
       
       // Extract data using templates
@@ -157,6 +167,7 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
             accountType: null,
             allTransactions: {
                deposits: [],
+               atmDebit: [],
                withdrawals: [],
                checks: [],
                fees: [],
@@ -189,6 +200,7 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
          accountType: null,
          allTransactions: {
             deposits: [],
+            atmDebit: [],
             withdrawals: [],
             checks: [],
             fees: [],
@@ -267,11 +279,11 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
     if (!this.documentProcessor) return;
     
     const boundingConstraints = {
-      topAnchor: table.headerCells[0],
+      topAnchor: "Your deposit accounts",
       bottomAnchor: "Total balance"
     }
     const fullTableData = await this.extractFullTableData(page.pageNumber, table, boundingConstraints, {
-      topBoundaryMode: 'inclusive',
+      topBoundaryMode: 'exclusive',
       bottomBoundaryMode: 'exclusive',
       includeAnchors: true
     });
@@ -311,6 +323,10 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
         }
         continue;
       }
+
+      if (row.some(cell => cell.toLowerCase().includes("your deposit accounts"))) {
+        continue;
+      }
       
       // Extract account information
       const accountName = accountNameIdx >= 0 && accountNameIdx < row.length ? row[accountNameIdx] : null;
@@ -348,6 +364,7 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
         accountType: accountName,
         allTransactions: {
           deposits: [],
+          atmDebit: [],
           withdrawals: [],
           checks: [],
           fees: [],
@@ -495,8 +512,6 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
       
       // Make sure we have headers - if not, use empty array
       const headers = table.headerCells || [];
-      
-      console.log("rows", rows);
 
       return {
         headers,
@@ -568,8 +583,6 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
       if (currentRow.length > 0) {
         rowGroups.push(currentRow);
       }
-
-      // console.log("rowGroups", rowGroups)
       
       // 3. Apply bounding constraints to filter rows
       let filteredRowGroups = [...rowGroups];
@@ -594,7 +607,6 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
           for (let i = 0; i < tempRows.length; i++) {
             const row = tempRows[i];
             const rowText = row.join(' ');
-            console.log(`Checking row ${i} for topAnchor:`, rowText);
             
             if (rowText.toLowerCase().includes(boundingConstraints.topAnchor.toLowerCase())) {
               console.log(`Found topAnchor in row ${i}`);
@@ -604,22 +616,17 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
                 const nextRow = tempRows[i + 1];
                 const nextRowText = nextRow.join(' ').toLowerCase();
                 const currentRowText = rowText.toLowerCase();
-                
-                // console.log(`Checking row ${i} and next row ${i + 1} for header keywords:`, currentRowText, nextRowText);
-                
+                                
                 const headerKeywords = ["date", "description", "transaction description", "amount"];
                 let matchCount = 0;
                 
                 for (const keyword of headerKeywords) {
-                  console.log(`Checking for header keyword: ${keyword}`);
                   if (nextRowText.includes(keyword)) {
                     matchCount++;
-                    console.log(`Found header keyword: ${keyword}`);
                   }
 
                   if (currentRowText.includes(keyword)) {
                     matchCount++;
-                    console.log(`Found header keyword: ${keyword}`);
                   }
                 }
                 
@@ -637,7 +644,7 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
           
           // Calculate y coordinates for boundary if we found the anchor row
           if (anchorRowIndex >= 0 && anchorRowIndex < rowGroups.length) {
-            const anchorRowGroup = rowGroups[anchorRowIndex];
+            const anchorRowGroup = rowGroups[anchorRowIndex - 1];
             const rowBlocks = anchorRowGroup;
             
             // Calculate average y position for the row
@@ -676,7 +683,6 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
           for (let i = 0; i < tempRows.length; i++) {
             const row = tempRows[i];
             const rowText = row.join(' ');
-            console.log(`Checking row ${i} for bottomAnchor:`, rowText);
             
             if (rowText.includes(boundingConstraints.bottomAnchor)) {
               anchorRowIndex = i;
@@ -735,8 +741,6 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
           });
         }
       }
-
-      // console.log("filteredRowGroups", filteredRowGroups)
       
       // 4. For each filtered row, sort blocks from left to right and extract text
       let rows: string[][] = [];
@@ -753,8 +757,6 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
         const rowTexts = sortedRowBlocks.map(block => block.text);
         rows.push(rowTexts);
       }
-      
-      console.log("rows---", rows)
       
       // Make sure we have headers - if not, use empty array
       const headers = table.headerCells || [];
@@ -774,7 +776,7 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
    * Process individual account pages referenced in a combined statement
    */
   private async processAccountDetailPages(data: ProcessedStatementData): Promise<void> {
-    console.log("-------------------------------- PROCESSING ACCOUNT DETAIL PAGES")
+    console.log("\n------------------------------------ PROCESSING ACCOUNT DETAIL PAGES")
     if (!this.documentProcessor) return;
 
     // If there is more than one account, we need to process each account separately
@@ -828,7 +830,6 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
     pageRange: { startPage: number, endPage?: number },
     data: ProcessedStatementData
   ): Promise<void> {
-    console.log(`-------------------------------- PROCESSING ACCOUNT STATEMENT ${account.accountNumberLast4}`)
     if (!this.documentProcessor) return;
     
     // If no end page specified, process until we find a page without relevant content
@@ -1024,33 +1025,14 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
   ): Promise<void> {
     // Use an object to map transaction categories
     const allTransactions: {
-      deposits: Array<{
-        date?: string | null;
-        description?: string | null;
-        amount?: number | null;
-        type: 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER';
-        rawRowText?: string;
-        category?: string;
-      }>;
-      withdrawals: Array<{
-        date?: string | null;
-        description?: string | null;
-        amount?: number | null;
-        type: 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER';
-        rawRowText?: string;
-        category?: string;
-      }>;
-      [key: string]: Array<{
-        date?: string | null;
-        description?: string | null;
-        amount?: number | null;
-        type: 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER';
-        rawRowText?: string;
-        category?: string;
-      }>;
+      deposits: Array<BofATransaction & { type: 'DEPOSIT' }>;
+      withdrawals: Array<BofATransaction & { type: 'WITHDRAWAL' }>;
+      atmDebit: Array<BofATransaction & { type: 'ATM_DEBIT' }>;
+      [key: string]: Array<BofATransaction>;
     } = {
       deposits: [],
-      withdrawals: []
+      withdrawals: [],
+      atmDebit: []
     };
     
     for (let pageNum = startPage; pageNum <= endPage; pageNum++) {
@@ -1066,6 +1048,18 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
           category: 'deposits'
         }));
         allTransactions.deposits.push(...categorizedDeposits);
+      }
+
+      // Process ATM and Debit Card Transactions table
+      const atmDebit = await this.processAtmDebitTable(page, account);
+      if (atmDebit && atmDebit.length > 0) {
+        // Add category to each transaction
+        const categorizedAtmDebit = atmDebit.map(t => ({
+          ...t, 
+          category: 'atmDebit'
+        }));
+
+        allTransactions.atmDebit.push(...categorizedAtmDebit);
       }
       
       // Process withdrawals table
@@ -1091,6 +1085,7 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
     if (!account.allTransactions) {
       account.allTransactions = {
         deposits: [],
+        atmDebit: [],
         withdrawals: [],
         checks: [],
         fees: [],
@@ -1098,10 +1093,25 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
       };
     }
     
+    // Add atmDebit array if it doesn't exist
+    if (!account.allTransactions.atmDebit) {
+      account.allTransactions.atmDebit = [];
+    }
+    
     // Assign all transactions to the account object
     Object.entries(allTransactions).forEach(([category, transactions]) => {
       if (account.allTransactions && account.allTransactions[category]) {
-        account.allTransactions[category].push(...transactions);
+        // Type assertion to satisfy TypeScript
+        const standardTransactions = transactions.map(t => {
+          return {
+            date: t.date,
+            description: t.description,
+            amount: t.amount,
+            type: t.type,
+            rawRowText: t.rawRowText
+          } as Transaction;
+        });
+        account.allTransactions[category].push(...standardTransactions);
       }
     });
     
@@ -1110,8 +1120,6 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
       (total, categoryTransactions) => total + categoryTransactions.length, 
       0
     );
-
-    console.log(account)
     
     console.log(`Added ${totalTransactions} total transactions to account ${account.accountNumberLast4}`);
   }
@@ -1122,13 +1130,7 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
   private async processDepositsTable(
     page: ProcessedPage,
     account: Account
-  ): Promise<Array<{
-    date?: string | null;
-    description?: string | null;
-    amount?: number | null;
-    type: 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER';
-    rawRowText?: string;
-  }>> {
+  ): Promise<Array<BofATransaction & { type: 'DEPOSIT' }>> {
     console.log(`------------ LOOKING FOR DEPOSITS TABLE ON PAGE ${page.pageNumber}`)
     
     // Define anchors for the Deposits table
@@ -1152,13 +1154,7 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
              headerText.includes('amount');
     });
     
-    const transactions: Array<{
-      date?: string | null;
-      description?: string | null;
-      amount?: number | null;
-      type: 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER';
-      rawRowText?: string;
-    }> = [];
+    const transactions: Array<BofATransaction & { type: 'DEPOSIT' }> = [];
     
     if (depositTables.length > 0 && depositsBounds.topAnchor) {
       console.log(`Found ${depositTables.length} potential Deposits tables`);
@@ -1204,8 +1200,8 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
                   return true;
                })
 
-               // Process as transaction
-               const transaction = this.extractTransactionFromRow(transactionData, 'DEPOSIT');
+               // Process as transaction with correct typing
+               const transaction = this.extractTransactionFromRow(transactionData, 'DEPOSIT') as BofATransaction & { type: 'DEPOSIT' };
                if (transaction.amount) {
                   transactions.push(transaction);
                }   
@@ -1228,20 +1224,12 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
   private async processWithdrawalsTable(
     page: ProcessedPage,
     account: Account
-  ): Promise<Array<{
-    date?: string | null;
-    description?: string | null;
-    amount?: number | null;
-    type: 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER';
-    rawRowText?: string;
-  }>> {
+  ): Promise<Array<BofATransaction & { type: 'WITHDRAWAL' }>> {
     console.log(`------------ LOOKING FOR WITHDRAWALS TABLE ON PAGE ${page.pageNumber}`)
     
     // Define anchors for the Withdrawals table
     const withdrawalsBounds = {
       topAnchor: this.findClosestTextInPage(page, [
-        "ATM and debit card subtractions",
-        "ATM and debit card subtractions - continued",
         "Other subtractions",
         "Service fees",
         "Withdrawals and other subtractions",
@@ -1249,7 +1237,6 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
       ]),
       bottomAnchor: this.findClosestTextInPage(page, [
         "continued on the next page",
-        "Total ATM and debit card subtractions",
         "Total other subtractions",
         "Total service fees",
         "Total withdrawals and other subtractions"
@@ -1266,13 +1253,7 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
              headerText.includes('amount');
     });
     
-    const transactions: Array<{
-      date?: string | null;
-      description?: string | null;
-      amount?: number | null;
-      type: 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER';
-      rawRowText?: string;
-    }> = [];
+    const transactions: Array<BofATransaction & { type: 'WITHDRAWAL' }> = [];
     
     if (withdrawalTables.length > 0 && withdrawalsBounds.topAnchor) {
       console.log(`Found ${withdrawalTables.length} potential Withdrawals tables`);
@@ -1293,8 +1274,6 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
             includeAnchors: false // Don't include anchor blocks
           }
         );
-
-        console.log("fullTableData", fullTableData)
         
         if (fullTableData && fullTableData.rows) {
           // Process each row as a withdrawal transaction
@@ -1311,8 +1290,8 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
               continue;
             }
             
-            // Process as transaction
-            const transaction = this.extractTransactionFromRow(row, 'WITHDRAWAL');
+            // Process as transaction with correct typing
+            const transaction = this.extractTransactionFromRow(row, 'WITHDRAWAL') as BofATransaction & { type: 'WITHDRAWAL' };
             
             // Add to results if we have an amount
             if (transaction.amount) {
@@ -1329,20 +1308,103 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
     
     return transactions;
   }
+
+  /**
+   * Process the ATM and Debit Card Transactions table on a page
+   */
+  private async processAtmDebitTable(
+    page: ProcessedPage,
+    account: Account
+  ): Promise<Array<BofATransaction & { type: 'ATM_DEBIT' }>> {
+    console.log(`------------ LOOKING FOR ATM AND DEBIT CARD TABLE ON PAGE ${page.pageNumber}`)
+    
+    // Define anchors for the ATM and Debit Card table
+    const atmDebitBounds = {
+      topAnchor: this.findClosestTextInPage(page, [
+        "ATM and debit card subtractions",
+        "ATM and debit card subtractions - continued"
+      ]),
+      bottomAnchor: this.findClosestTextInPage(page, [
+        "Total ATM and debit card subtractions",
+        "continued on the next page"
+      ])
+    };
+    
+    // Try to find ATM and debit tables using Document AI's table detection
+    const atmDebitTables = page.tables.filter(table => {
+      const headerText = table.headerCells.join(' ').toLowerCase();
+      return headerText.includes('date') && 
+             headerText.includes('description') && 
+             headerText.includes('amount');
+    });
+    
+    const transactions: Array<BofATransaction & { type: 'ATM_DEBIT' }> = [];
+    
+    if (atmDebitTables.length > 0 && atmDebitBounds.topAnchor) {
+      console.log(`Found ${atmDebitTables.length} potential ATM and Debit Card tables`);
+      
+      // Find the table that's closest to the "ATM and debit card subtractions" heading
+      const atmDebitTable = this.findTableNearAnchor(page, atmDebitTables, atmDebitBounds.topAnchor);
+      
+      if (atmDebitTable) {
+        // Extract the full table data - use exclusive boundaries to avoid header/footer
+        const fullTableData = await this.extractFullTableDataForTransactions(
+          page.pageNumber, 
+          atmDebitTable, 
+          atmDebitBounds,
+          {
+            topBoundaryMode: 'exclusive', // Don't include the header
+            bottomBoundaryMode: 'exclusive', // Don't include the footer
+            includeAnchors: false // Don't include anchor blocks
+          }
+        );
+        
+        if (fullTableData && fullTableData.rows) {
+          // Process each row as an ATM/debit transaction
+          for (const row of fullTableData.rows) {
+            // Skip rows that are too short
+            if (row.length < 2) continue;
+            
+            // Check if this is a header or transaction
+            const rowCheck = this.isHeaderRow(row);
+            
+            // Skip header rows
+            if (rowCheck.isHeader && !rowCheck.isTransaction) {
+              console.log("Skipping header row");
+              continue;
+            }
+            
+            // Process as transaction with explicit ATM_DEBIT type
+            const baseTransaction = this.extractTransactionFromRow(row, 'ATM_DEBIT');
+            // Create properly typed transaction
+            const transaction = {
+              ...baseTransaction,
+              type: 'ATM_DEBIT' as const
+            };
+            
+            // Add to results if we have an amount
+            if (transaction.amount) {
+              transactions.push(transaction);
+            }
+          }
+
+          console.log(`Extracted ${transactions.length} ATM and debit card transactions from table`);
+        }
+      }
+    } else {
+      console.error("No ATM and debit card table found");
+    }
+    
+    return transactions;
+  }
   
   /**
    * Extract transaction information from a table row
    */
   private extractTransactionFromRow(
     row: string[],
-    type: 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER'
-  ): {
-    date?: string | null;
-    description?: string | null;
-    amount?: number | null;
-    type: 'DEPOSIT' | 'WITHDRAWAL' | 'OTHER';
-    rawRowText?: string;
-  } {
+    type: 'DEPOSIT' | 'WITHDRAWAL' | 'ATM_DEBIT'
+  ): BofATransaction {
     // Join all cells in the row as a backup
     const rowText = row.join(' ');
     
@@ -1397,7 +1459,7 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
     }
     
     // Apply sign adjustment for withdrawals
-    if (type === 'WITHDRAWAL' && amountVal !== null) {
+    if ((type === 'WITHDRAWAL' || type === 'ATM_DEBIT') && amountVal !== null) {
       amountVal = -Math.abs(amountVal);
     }
     
@@ -1466,44 +1528,6 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
     }
     
     return { isHeader, isTransaction };
-  }
-  
-  /**
-   * Get text blocks within specified bounds
-   */
-  private getTextBlocksWithinBounds(
-    page: ProcessedPage,
-    bounds: { topAnchor?: string, bottomAnchor?: string, y1?: number, y2?: number }
-  ): Array<{text: string, boundingBox: any}> {
-    let filteredBlocks = [...page.textBlocks];
-    
-    // If we have anchor words, find their positions
-    if (bounds.topAnchor) {
-      const topBlock = page.textBlocks.find(block => 
-        block.text.toLowerCase().includes(bounds.topAnchor!.toLowerCase()));
-      if (topBlock) {
-        bounds.y1 = topBlock.boundingBox.y2; // Bottom of the top anchor
-      }
-    }
-    
-    if (bounds.bottomAnchor) {
-      const bottomBlock = page.textBlocks.find(block => 
-        block.text.toLowerCase().includes(bounds.bottomAnchor!.toLowerCase()));
-      if (bottomBlock) {
-        bounds.y2 = bottomBlock.boundingBox.y1; // Top of the bottom anchor
-      }
-    }
-    
-    // Filter blocks within the vertical range
-    if (bounds.y1 !== undefined || bounds.y2 !== undefined) {
-      filteredBlocks = filteredBlocks.filter(block => {
-        const blockCenterY = (block.boundingBox.y1 + block.boundingBox.y2) / 2;
-        return (bounds.y1 === undefined || blockCenterY >= bounds.y1) &&
-               (bounds.y2 === undefined || blockCenterY <= bounds.y2);
-      });
-    }
-    
-    return filteredBlocks;
   }
   
   /**

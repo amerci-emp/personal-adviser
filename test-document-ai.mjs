@@ -14,8 +14,8 @@ async function runTest() {
   // --- Configuration: Choose ONE of the options below ---
 
   // Option 1: Test with a local file
-  // const testFilePath = path.join(__dirname, 'uploads/a0923am2343232n232.pdf'); // Replace with actual path
-  const testFilePath = path.join(__dirname, 'uploads/063dde8b-7785-4fa2-a8bf-56daa9b7551a.pdf'); // Replace with actual path
+  const testFilePath = path.join(__dirname, 'uploads/a0923am2343232n232.pdf'); // Replace with actual path
+  // const testFilePath = path.join(__dirname, 'uploads/063dde8b-7785-4fa2-a8bf-56daa9b7551a.pdf'); // Replace with actual path
   const testFileType = 'application/pdf'; // Or 'image/png', 'image/jpeg'
   const testFileSource = testFilePath;
 
