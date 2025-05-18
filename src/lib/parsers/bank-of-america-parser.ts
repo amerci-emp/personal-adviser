@@ -324,20 +324,57 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
         continue;
       }
 
-      if (row.some(cell => cell.toLowerCase().includes("your deposit accounts"))) {
+      // Define header keywords to identify and potentially filter out
+      const headerKeywords = [
+        'your deposit accounts',
+        'account/plan number',
+        'ending balance',
+        'details on'
+      ];
+      
+      // Check if row contains header information
+      const containsHeaderInfo = row.some(cell => 
+        headerKeywords.some(keyword => cell.toLowerCase().includes(keyword.toLowerCase()))
+      );
+      
+      // Check if row contains account information (account number with digits)
+      const containsAccountInfo = row.some(cell => 
+        /\d{4}/.test(cell) || // Has a 4-digit sequence
+        (cell.includes('*') && /\d+/.test(cell)) // Has asterisks and digits (masked account)
+      );
+      
+      // If row is only a header with no account info, skip it
+      if (containsHeaderInfo && !containsAccountInfo) {
+        console.log("Skipping pure header row");
         continue;
       }
       
+      let filteredRow = row;
+      // If row contains both header and account info, filter out header cells
+      if (containsHeaderInfo && containsAccountInfo) {
+        console.log("Found mixed header/account row - filtering header content");
+        // Create filtered row without header content
+        filteredRow = row.map(cell => {
+          // For each cell, check if it's a pure header cell
+          if (headerKeywords.some(keyword => 
+            cell.toLowerCase() === keyword.toLowerCase() ||
+            cell.toLowerCase().trim() === keyword.toLowerCase()
+          )) {
+            return ""; // Replace pure header cells with empty string
+          }
+          return cell; // Keep other cells
+        }).filter(cell => cell.trim() !== ""); // Remove empty cells
+      }
+      
       // Extract account information
-      const accountName = accountNameIdx >= 0 && accountNameIdx < row.length ? row[accountNameIdx] : null;
-      const accountNumber = accountNumIdx >= 0 && accountNumIdx < row.length ? row[accountNumIdx] : null;
-      const balanceText = balanceIdx >= 0 && balanceIdx < row.length ? row[balanceIdx] : null;
-      const pageRefText = pageRefIdx >= 0 && pageRefIdx < row.length ? row[pageRefIdx] : null;
+      const accountName = accountNameIdx >= 0 && accountNameIdx < filteredRow.length ? filteredRow[accountNameIdx] : null;
+      const accountNumber = accountNumIdx >= 0 && accountNumIdx < filteredRow.length ? filteredRow[accountNumIdx] : null;
+      const balanceText = balanceIdx >= 0 && balanceIdx < filteredRow.length ? filteredRow[balanceIdx] : null;
+      const pageRefText = pageRefIdx >= 0 && pageRefIdx < filteredRow.length ? filteredRow[pageRefIdx] : null;
       
       if (!accountNumber) continue; // Skip if no account number
       
       // Extract last 4 digits of account number
-      // Use a pattern that matches the last 4 digits specifically
       const last4 = accountNumber.replace(/\D/g, '').slice(-4);
       
       // Extract balance amount
@@ -358,7 +395,7 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
         }
       }
       
-      // Add to processed data - store all information directly in the Account object
+      // Add to processed data
       data.accounts.push({
         accountNumberLast4: last4,
         accountType: accountName,

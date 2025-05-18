@@ -104,7 +104,7 @@ type Statement = {
   uploadTimestamp: Date;
   periodStart?: Date | null;
   periodEnd?: Date | null;
-  account?: BankAccount | null;
+  accounts: BankAccount[];
 };
 
 export default async function DashboardPage() {
@@ -135,7 +135,8 @@ export default async function DashboardPage() {
     });
     
     console.log(`Found ${accountsData.length} bank accounts`);
-    accounts = accountsData as BankAccount[];
+    // Use unknown as an intermediate step for type safety
+    accounts = accountsData as unknown as BankAccount[];
     
     const statementsData = await prisma.statement.findMany({
       where: {
@@ -146,12 +147,13 @@ export default async function DashboardPage() {
       },
       take: 5,
       include: {
-        account: true,
+        accounts: true,
       },
     });
     
     console.log(`Found ${statementsData.length} statements`);
-    recentStatements = statementsData as Statement[];
+    // Use unknown as an intermediate step for type safety
+    recentStatements = statementsData as unknown as Statement[];
   } catch (error) {
     console.error("Error fetching data from database:", error);
     hasError = true;
@@ -408,15 +410,15 @@ export default async function DashboardPage() {
                         </div>
                         
                         {/* Associated account */}
-                        {statement.account && (
+                        {statement.accounts && statement.accounts.length > 0 && (
                           <div className="flex items-center justify-between text-xs mt-2 pt-2 border-t">
                             <div className="flex items-center gap-1">
                               <Building className="h-3 w-3" />
-                              <span>{statement.account.financialInstitution}</span>
+                              <span>{statement.accounts[0].financialInstitution}</span>
                             </div>
                             <div className="flex items-center gap-1">
-                              {getAccountTypeIcon(statement.account.accountType)}
-                              <span>{statement.account.name}</span>
+                              {getAccountTypeIcon(statement.accounts[0].accountType)}
+                              <span>{statement.accounts[0].name}</span>
                             </div>
                           </div>
                         )}

@@ -150,7 +150,7 @@ export abstract class BankStatementParser {
       
       // Determine filename
       const originalFilename = path.basename(this.filePath);
-      const outputFilename = `extracted-data-${originalFilename}.json`;
+      const outputFilename = `tmp/extracted-data-${originalFilename}.json`;
       
       // Save to file
       await fs.writeFile(

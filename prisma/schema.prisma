@@ -98,7 +98,7 @@ model BankAccount {
   institutionLogo       String?     // URL to the institution's logo
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  statements   Statement[]
+  statements   Statement[]   // Many-to-many relationship via an implicit junction table
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -119,7 +119,6 @@ enum StatementStatus {
 model Statement {
   id                 String          @id @default(cuid())
   userId             String
-  accountId          String?         // Now optional, but will be filled when processing succeeds
   filename           String
   uploadTimestamp    DateTime        @default(now())
   status             StatementStatus @default(UPLOADED)
@@ -132,14 +131,13 @@ model Statement {
   periodEnd          DateTime?       // Statement period end date
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account      BankAccount?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  accounts     BankAccount[] // Many-to-many relationship via an implicit junction table
   transactions Transaction[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
   @@index([userId])
-  @@index([accountId])
   @@index([status])
 }
 

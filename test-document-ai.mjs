@@ -2,6 +2,7 @@ import { processUploadedFile } from './src/lib/file-processing.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 // Configure dotenv to load environment variables from .env
 dotenv.config();
@@ -11,35 +12,54 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function runTest() {
-  // --- Configuration: Choose ONE of the options below ---
+  // Get statement file path from command line arguments
+  const args = process.argv.slice(2);
+  let testFilePath;
+  let testFileType = 'application/pdf'; // Default file type
+  let testFileSource;
 
-  // Option 1: Test with a local file
-  const testFilePath = path.join(__dirname, 'uploads/a0923am2343232n232.pdf'); // Replace with actual path
-  // const testFilePath = path.join(__dirname, 'uploads/063dde8b-7785-4fa2-a8bf-56daa9b7551a.pdf'); // Replace with actual path
-  const testFileType = 'application/pdf'; // Or 'image/png', 'image/jpeg'
-  const testFileSource = testFilePath;
-
-  // // Option 2: Test with a URL (e.g., a Supabase public URL or a pre-signed URL)
-  // const testFileUrl = 'YOUR_TEST_FILE_URL_HERE'; // Replace with an actual public URL to a test PDF/image
-  // const testFileType = 'application/pdf'; // Or 'image/png', 'image/jpeg' based on the URL content
-  // const testFileSource = testFileUrl;
-  
-  // --- End Configuration ---
-
-  if (!testFileSource || testFileSource === 'YOUR_TEST_FILE_URL_HERE' && !testFileSource.startsWith('http')) {
-    if (testFileSource === 'YOUR_TEST_FILE_URL_HERE') {
-        console.error('---------------------------------------------------------------------------');
-        console.error('ERROR: Please configure a test file URL in test-document-ai.mjs (Option 2).');
-        console.error('Or, comment out Option 2 and configure Option 1 for a local file test.');
-        console.error('---------------------------------------------------------------------------');
-    } else if (!testFileSource.startsWith('http')) {
-        console.error('---------------------------------------------------------------------------');
-        console.error('ERROR: Please configure a local test file path in test-document-ai.mjs (Option 1).');
-        console.error(`Current path: ${testFilePath} does not seem to exist or is not configured.`);
-        console.error('Or, comment out Option 1 and configure Option 2 for a URL test.');
-        console.error('---------------------------------------------------------------------------');
+  if (args.length > 0) {
+    // Use the provided file path from command line
+    testFilePath = args[0];
+    
+    // Check if the file exists
+    if (!fs.existsSync(testFilePath)) {
+      console.error(`Error: File not found at path: ${testFilePath}`);
+      return;
     }
-    return;
+    
+    // Detect file type based on extension if not provided as second argument
+    if (args.length > 1) {
+      testFileType = args[1];
+    } else {
+      const ext = path.extname(testFilePath).toLowerCase();
+      if (ext === '.pdf') {
+        testFileType = 'application/pdf';
+      } else if (ext === '.png') {
+        testFileType = 'image/png';
+      } else if (ext === '.jpg' || ext === '.jpeg') {
+        testFileType = 'image/jpeg';
+      }
+    }
+    
+    testFileSource = testFilePath;
+  } else {
+    // Fallback to default file if no argument provided
+    testFilePath = path.join(__dirname, 'uploads/BOA_1729_April11-May11_Stmt.pdf');
+    testFileType = 'application/pdf';
+    testFileSource = testFilePath;
+    
+    console.log('No file path provided as argument. Using default file:');
+    console.log(`Default file: ${testFilePath}`);
+    console.log('To specify a file, run: node test-document-ai.mjs /path/to/your/file.pdf');
+    
+    // Check if default file exists
+    if (!fs.existsSync(testFilePath)) {
+      console.error(`Error: Default file not found at path: ${testFilePath}`);
+      console.error('Please provide a valid file path as an argument:');
+      console.error('node test-document-ai.mjs /path/to/your/file.pdf');
+      return;
+    }
   }
 
   console.log(`Using Document AI Form Parser to scan first page of: ${testFileSource}`);
