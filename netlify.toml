@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build:netlify"
+  command = "npm run build"
   publish = ".next"
 
 [functions]
@@ -8,19 +8,10 @@
 
 [build.environment]
   NODE_VERSION = "18"
-
-# Add build hooks for Prisma
-[[plugins]]
-  package = "@netlify/plugin-prisma"
+  NPM_FLAGS = "--legacy-peer-deps"
 
 # Handle Next.js routing
 [[redirects]]
   from = "/*"
   to = "/index.html"
-  status = 200
-
-# Handle API routes
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
   status = 200
