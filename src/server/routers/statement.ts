@@ -78,6 +78,7 @@ export const statementRouter = createTRPCRouter({
             isDuplicate: true,
             duplicateType: 'filename',
             statement: existingStatement,
+            duplicateId: existingStatement.id,
             accounts: [],
             potentialAccounts: [],
           };
@@ -161,6 +162,7 @@ export const statementRouter = createTRPCRouter({
           isDuplicate: !!duplicateStatement,
           duplicateType: duplicateStatement ? 'periodAndAccount' : statementsInPeriod.length > 0 ? 'period' : null,
           statement: duplicateStatement,
+          duplicateId: duplicateStatement?.id,
           accounts: matchingBankAccounts,
           potentialAccounts: accounts,
           statementPeriod: {
@@ -177,7 +179,7 @@ export const statementRouter = createTRPCRouter({
           error: "Error checking for duplicate statement",
         };
       }
-    }),
+  }),
 
   // Upload a new statement
   upload: protectedProcedure
@@ -185,31 +187,63 @@ export const statementRouter = createTRPCRouter({
       z.object({
         filename: z.string(),
         fileType: z.string(),
-        fileUrl: z.string().url(),// Optional: If user already selected an account
+        fileUrl: z.string().url(),
+        replaceDuplicate: z.boolean().optional().default(true),
+        duplicateId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        // Create a record in the database to track the statement
-        const statement = await ctx.prisma.statement.create({
-          data: {
-            filename: input.filename,
-            userId: ctx.session.user.id,
-            status: StatementStatus.UPLOADED,
-            storageUrl: input.fileUrl
-          },
-        });
+        let statement;
+        
+        if (input.replaceDuplicate && input.duplicateId) {
+          const existingStatement = await ctx.prisma.statement.findFirst({
+            where: {
+              id: input.duplicateId,
+              userId: ctx.session.user.id,
+            },
+            include: {
+              accounts: true,
+            },
+          });
+          
+          if (!existingStatement) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Duplicate statement not found",
+            });
+          }
+          
+          statement = await ctx.prisma.statement.update({
+            where: { id: input.duplicateId },
+            data: {
+              filename: input.filename,
+              storageUrl: input.fileUrl,
+              status: StatementStatus.UPLOADED,
+              errorMessage: null,
+              processedTimestamp: null,
+            },
+          });
+          
+          console.log(`Replacing existing statement ${statement.id} with new uploaded file`);
+        } else {
+          statement = await ctx.prisma.statement.create({
+            data: {
+              filename: input.filename,
+              userId: ctx.session.user.id,
+              status: StatementStatus.UPLOADED,
+              storageUrl: input.fileUrl
+            },
+          });
+        }
 
-        // Start processing the file in the background
         void (async () => {
           try {
-            // Update status to processing
             await ctx.prisma.statement.update({
               where: { id: statement.id },
               data: { status: StatementStatus.PROCESSING },
             });
 
-            // Process the file with Vision AI
             const processingResult = await processUploadedFile(
               input.fileUrl,
               input.fileType
@@ -221,40 +255,33 @@ export const statementRouter = createTRPCRouter({
               );
             }
 
-            // Check required fields in the data
             const { bankName, accounts, statementPeriodStartDate, statementPeriodEndDate } = processingResult.data;
             if (!bankName || !accounts || accounts.length === 0 || !statementPeriodStartDate || !statementPeriodEndDate) {
               throw new Error("Incomplete statement data: missing bank name, accounts, or statement period");
             }
 
-            // Use statement period directly from the processed data
             const periodInfo = {
               start: new Date(statementPeriodStartDate),
               end: new Date(statementPeriodEndDate)
             };
 
             console.log(`Statement contains ${accounts.length} accounts`);
-            
-            // Initialize an array of bank account IDs to connect to this statement
+
             const accountIdsToConnect: string[] = [];
             
-            // Process all accounts from the statement
             for (let i = 0; i < accounts.length; i++) {
               const account = accounts[i];
               
-              // Skip accounts without last 4 digits (can't reliably identify)
               if (!account.accountNumberLast4) {
                 console.log(`Skipping account at index ${i} without last 4 digits`);
                 continue;
               }
               
-              // Map string account type to enum AccountType
               const mappedAccountType = account.accountType === "Advantage Plus Banking" ? "CHECKING" : 
                                       (account.accountType && ["CHECKING", "SAVINGS", "CREDIT", "INVESTMENT", "OTHER"].includes(account.accountType) ? 
                                         account.accountType as "CHECKING" | "SAVINGS" | "CREDIT" | "INVESTMENT" | "OTHER" : 
                                         "OTHER");
               
-              // Try to find or create the bank account
               let bankAccount = await ctx.prisma.bankAccount.findFirst({
                 where: {
                   userId: ctx.session.user.id,
@@ -262,9 +289,8 @@ export const statementRouter = createTRPCRouter({
                   lastFourDigits: account.accountNumberLast4,
                 },
               });
-              
+
               if (bankAccount) {
-                // Update existing account if needed
                 if (account.metadata?.endingBalance !== undefined) {
                   await ctx.prisma.bankAccount.update({
                     where: { id: bankAccount.id },
@@ -272,7 +298,6 @@ export const statementRouter = createTRPCRouter({
                   });
                 }
               } else {
-                // Create a new bank account
                 bankAccount = await ctx.prisma.bankAccount.create({
                   data: {
                     userId: ctx.session.user.id,
@@ -285,14 +310,23 @@ export const statementRouter = createTRPCRouter({
                   },
                 });
               }
-              
-              // Add this account ID to our list to connect
+                
               if (!accountIdsToConnect.includes(bankAccount.id)) {
                 accountIdsToConnect.push(bankAccount.id);
               }
             }
-            
-            // Update the statement with all accounts and period info
+
+            if (input.replaceDuplicate && input.duplicateId) {
+              await ctx.prisma.statement.update({
+                where: { id: statement.id },
+                data: {
+                  accounts: {
+                    set: []
+                  }
+                }
+              });
+            }
+
             await ctx.prisma.statement.update({
               where: { id: statement.id },
               data: {
@@ -310,7 +344,6 @@ export const statementRouter = createTRPCRouter({
           } catch (error) {
             console.error("Error processing statement:", error);
             
-            // Update statement with error
             await ctx.prisma.statement.update({
               where: { id: statement.id },
               data: {
@@ -322,10 +355,10 @@ export const statementRouter = createTRPCRouter({
           }
         })();
 
-        // Immediately return the statement ID for the client
         return {
           success: true,
           statementId: statement.id,
+          wasReplaced: input.replaceDuplicate && input.duplicateId ? true : false,
         };
       } catch (error) {
         console.error("Error uploading statement:", error);
@@ -394,7 +427,7 @@ export const statementRouter = createTRPCRouter({
         };
 
         console.log(`Statement contains ${accounts.length} accounts`);
-        
+
         // Update statement with period information
         await ctx.prisma.statement.update({
           where: { id: statement.id },
@@ -430,7 +463,7 @@ export const statementRouter = createTRPCRouter({
               lastFourDigits: account.accountNumberLast4,
             },
           });
-          
+
           if (bankAccount) {
             // Update existing account if needed
             if (account.metadata?.endingBalance !== undefined) {
@@ -456,8 +489,8 @@ export const statementRouter = createTRPCRouter({
           
           // Connect this account to the statement
           await ctx.prisma.statement.update({
-            where: { id: statement.id },
-            data: {
+          where: { id: statement.id },
+          data: {
               accounts: {
                 connect: { id: bankAccount.id }
               }
@@ -469,7 +502,7 @@ export const statementRouter = createTRPCRouter({
         const updatedStatement = await ctx.prisma.statement.findUnique({
           where: { id: statement.id }
         });
-        
+
         return updatedStatement;
       } catch (error) {
         console.error("Error processing statement:", error);
@@ -500,13 +533,13 @@ export const statementRouter = createTRPCRouter({
       }
 
       const statement = await ctx.prisma.statement.findUnique({
-              where: {
-        id: input.id,
-        userId: ctx.session.user.id, // Ensure user can only access their own statements
-      },
-      include: {
+        where: {
+          id: input.id,
+          userId: ctx.session.user.id, // Ensure user can only access their own statements
+        },
+        include: {
         accounts: true,
-      },
+        },
       });
 
       if (!statement) {

@@ -8,6 +8,7 @@ import { api } from "./client";
 
 export function TRPCProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
+  console.log("______________", process.env.NODE_ENV);
   const [trpcClient] = useState(() =>
     api.createClient({
       links: [

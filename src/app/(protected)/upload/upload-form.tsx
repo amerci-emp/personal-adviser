@@ -42,12 +42,16 @@ export function UploadForm() {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [duplicateInfo, setDuplicateInfo] = useState<any>(null);
+  // Always replace duplicates by default
+  const [replaceDuplicate, setReplaceDuplicate] = useState(true);
 
   // Handle error type in onError properly
   const uploadMutation = api.statement.upload.useMutation({
     onSuccess: () => {
       toast.success("Statement uploaded successfully", {
-        description: "Your statement is now processing. You can view its status on the dashboard.",
+        description: duplicateInfo?.isDuplicate 
+          ? "Your statement has replaced the existing duplicate." 
+          : "Your statement is now processing. You can view its status on the dashboard.",
         duration: 5000,
       });
     },
@@ -73,6 +77,9 @@ export function UploadForm() {
       if (data.isDuplicate || data.warning || (data.accounts && data.accounts.length > 0)) {
         // We found a potential duplicate or matching accounts, show dialog
         setDuplicateInfo(data);
+        if (data.isDuplicate) {
+          setReplaceDuplicate(true); // Always replace duplicates
+        }
         setShowDuplicateDialog(true);
       } else {
         // No duplicates, proceed with upload
@@ -151,6 +158,8 @@ export function UploadForm() {
       filename: selectedFile.name,
       fileType: selectedFile.type,
       fileUrl: fileUrl,
+      replaceDuplicate: replaceDuplicate,
+      duplicateId: duplicateInfo?.duplicateId,
     });
 
     // Immediately redirect to dashboard
@@ -158,6 +167,8 @@ export function UploadForm() {
   };
 
   const handleConfirmUpload = () => {
+    // Always replace when confirming from the duplicate dialog
+    setReplaceDuplicate(true);
     setShowDuplicateDialog(false);
     proceedWithUpload();
   };
@@ -233,7 +244,7 @@ export function UploadForm() {
             </DialogTitle>
             <DialogDescription>
               {duplicateInfo?.isDuplicate 
-                ? "This statement appears to be a duplicate of one you've already uploaded."
+                ? "This statement appears to be a duplicate of one you've already uploaded. Would you like to replace the existing statement with this new one?"
                 : "We found the following information in your statement."}
             </DialogDescription>
           </DialogHeader>
@@ -246,6 +257,14 @@ export function UploadForm() {
                   <p className="font-medium text-amber-900 flex items-center gap-1.5">
                     <Info className="h-4 w-4" />
                     A statement with the same filename has already been uploaded
+                  </p>
+                  <p className="text-amber-800 mt-1 pl-5">
+                    Existing statement: {duplicateInfo.statement.filename}
+                    {duplicateInfo.statement.periodStart && duplicateInfo.statement.periodEnd && (
+                      <span className="block mt-1">
+                        Period: {formatDate(duplicateInfo.statement.periodStart)} - {formatDate(duplicateInfo.statement.periodEnd)}
+                      </span>
+                    )}
                   </p>
                 </div>
               )}
@@ -333,13 +352,19 @@ export function UploadForm() {
             </div>
           )}
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="flex-col space-y-2 sm:space-y-0 sm:flex-row sm:justify-end gap-2">
             <Button variant="outline" onClick={handleCancelUpload}>
               Cancel Upload
             </Button>
-            <Button onClick={handleConfirmUpload}>
-              Proceed with Upload
-            </Button>
+            {duplicateInfo?.isDuplicate ? (
+              <Button onClick={handleConfirmUpload}>
+                Replace Existing
+              </Button>
+            ) : (
+              <Button onClick={handleConfirmUpload}>
+                Proceed with Upload
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
