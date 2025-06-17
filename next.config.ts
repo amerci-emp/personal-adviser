@@ -15,9 +15,7 @@ const nextConfig: NextConfig = {
   },
   
   // Ensure proper handling of API routes
-  experimental: {
-    serverComponentsExternalPackages: ['@prisma/client'],
-  },
+  serverExternalPackages: ['@prisma/client'],
 };
 
 export default nextConfig;
