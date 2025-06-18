@@ -5,6 +5,7 @@ import { processUploadedFile } from "@/lib/file-processing";
 import { extractAccountInfo, extractStatementPeriod } from "@/lib/account-extractor";
 import { ExportService } from "@/lib/export-service";
 import { GoogleSheetsCredentials } from "@/lib/google-sheets";
+import { TransactionService } from "@/lib/transaction-service";
 
 // Use string constants for the enum
 const StatementStatus = {
@@ -308,9 +309,30 @@ export const statementRouter = createTRPCRouter({
               },
             });
 
+            // Save transactions to database first (Database-First approach)
+            console.log('Saving transactions to database...');
+            const saveResult = await TransactionService.saveTransactionsFromProcessedData(
+              statement.id,
+              processingResult.data
+            );
+
+            if (!saveResult.success) {
+              throw new Error(`Failed to save transactions: ${saveResult.errors.join('; ')}`);
+            }
+
+            console.log(`Saved ${saveResult.savedCount} transactions to database (${saveResult.skippedCount} skipped)`);
+
+            // Update statement status to REVIEW_NEEDED (ready for review before export)
+            await ctx.prisma.statement.update({
+              where: { id: statement.id },
+              data: {
+                status: StatementStatus.REVIEW_NEEDED,
+              },
+            });
+
             // Auto-export to Google Sheets if user has Google credentials
             try {
-              console.log('Starting auto-export to Google Sheets...');
+              console.log('Starting auto-export from database...');
               
               // Get user's Google credentials
               const googleAccount = await ctx.prisma.account.findFirst({
@@ -331,12 +353,9 @@ export const statementRouter = createTRPCRouter({
                     expires_at: googleAccount.expires_at || undefined,
                   };
 
-                  // Create export service and export transactions
+                  // Create export service and export from database (Database-First approach)
                   const exportService = new ExportService(ctx.session.user.id, credentials);
-                  const exportResult = await exportService.exportTransactionsFromProcessedData(
-                    statement.id,
-                    processingResult.data
-                  );
+                  const exportResult = await exportService.exportStatement(statement.id);
 
                   if (exportResult.success) {
                     console.log(`Successfully exported ${exportResult.exportedCount} transactions to ${exportResult.monthlySheets.length} monthly sheets`);
@@ -535,9 +554,30 @@ export const statementRouter = createTRPCRouter({
           }
         }
 
+        // Save transactions to database first (Database-First approach)
+        console.log('Saving transactions to database...');
+        const saveResult = await TransactionService.saveTransactionsFromProcessedData(
+          statement.id,
+          processingResult.data
+        );
+
+        if (!saveResult.success) {
+          throw new Error(`Failed to save transactions: ${saveResult.errors.join('; ')}`);
+        }
+
+        console.log(`Saved ${saveResult.savedCount} transactions to database (${saveResult.skippedCount} skipped)`);
+
+        // Update statement status to REVIEW_NEEDED (ready for review before export)
+        await ctx.prisma.statement.update({
+          where: { id: statement.id },
+          data: {
+            status: StatementStatus.REVIEW_NEEDED,
+          },
+        });
+
         // Auto-export to Google Sheets if user has Google credentials
         try {
-          console.log('Starting auto-export to Google Sheets...');
+          console.log('Starting auto-export from database...');
           
           // Get user's Google credentials
           const googleAccount = await ctx.prisma.account.findFirst({
@@ -560,10 +600,7 @@ export const statementRouter = createTRPCRouter({
 
               // Create export service and export transactions
               const exportService = new ExportService(ctx.session.user.id, credentials);
-              const exportResult = await exportService.exportTransactionsFromProcessedData(
-                statement.id,
-                processingResult.data
-              );
+              const exportResult = await exportService.exportStatement(statement.id);
 
               if (exportResult.success) {
                 console.log(`Successfully exported ${exportResult.exportedCount} transactions to ${exportResult.monthlySheets.length} monthly sheets`);
