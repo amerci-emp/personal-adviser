@@ -1,14 +1,25 @@
 import { NextAuthOptions } from "next-auth";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import { compare } from "bcrypt";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+  // Remove adapter temporarily to avoid type conflicts
+  // adapter: PrismaAdapter(prisma),
   providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          scope: "openid email profile https://www.googleapis.com/auth/spreadsheets",
+        },
+      },
+    }),
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -58,6 +69,108 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.sub!;
       }
       return session;
+    },
+    async jwt({ token, account, profile, user }) {
+      // Store the OAuth access_token and refresh_token for later use
+      if (account) {
+        token.accessToken = account.access_token;
+        token.refreshToken = account.refresh_token;
+      }
+      
+      // Add user id to token
+      if (user) {
+        token.sub = user.id;
+      }
+      
+      return token;
+    },
+    async signIn({ user, account, profile }) {
+      try {
+        if (account?.provider === "google") {
+          // Check if user exists
+          const existingUser = await prisma.user.findUnique({
+            where: { email: user.email! },
+          });
+
+          if (existingUser) {
+            // User exists, check if Google account is linked
+            const existingAccount = await prisma.account.findFirst({
+              where: {
+                userId: existingUser.id,
+                provider: "google",
+                providerAccountId: account.providerAccountId,
+              },
+            });
+
+            if (!existingAccount) {
+              // Link Google account to existing user
+              await prisma.account.create({
+                data: {
+                  userId: existingUser.id,
+                  type: account.type,
+                  provider: account.provider,
+                  providerAccountId: account.providerAccountId,
+                  refresh_token: account.refresh_token,
+                  access_token: account.access_token,
+                  expires_at: account.expires_at,
+                  token_type: account.token_type,
+                  scope: account.scope,
+                  id_token: account.id_token,
+                  session_state: account.session_state,
+                },
+              });
+            }
+
+            // Update the user object with the existing user's ID
+            user.id = existingUser.id;
+          } else {
+            // Create new user
+            const newUser = await prisma.user.create({
+              data: {
+                name: user.name,
+                email: user.email!,
+                image: user.image,
+                emailVerified: new Date(),
+              },
+            });
+
+            // Create account record
+            await prisma.account.create({
+              data: {
+                userId: newUser.id,
+                type: account.type,
+                provider: account.provider,
+                providerAccountId: account.providerAccountId,
+                refresh_token: account.refresh_token,
+                access_token: account.access_token,
+                expires_at: account.expires_at,
+                token_type: account.token_type,
+                scope: account.scope,
+                id_token: account.id_token,
+                session_state: account.session_state,
+              },
+            });
+
+            user.id = newUser.id;
+          }
+        }
+
+        return true;
+      } catch (error) {
+        console.error("Error in signIn callback:", error);
+        return false;
+      }
+    },
+    async redirect({ url, baseUrl }) {
+      // Redirect to dashboard after successful sign in
+      if (url === baseUrl || url === "/") {
+        return `${baseUrl}/dashboard`;
+      }
+      // Allow callback URLs on the same origin
+      if (url.startsWith(baseUrl)) {
+        return url;
+      }
+      return `${baseUrl}/dashboard`;
     },
   },
 };
