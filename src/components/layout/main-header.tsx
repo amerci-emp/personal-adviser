@@ -28,11 +28,6 @@ export function MainHeader() {
       active: pathname === "/dashboard",
     },
     {
-      href: "/accounts",
-      label: "Accounts",
-      active: pathname === "/accounts",
-    },
-    {
       href: "/upload",
       label: "Upload Statement",
       active: pathname === "/upload",
