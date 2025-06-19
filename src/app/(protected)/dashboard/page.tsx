@@ -194,9 +194,14 @@ export default async function DashboardPage() {
             Welcome back, {session?.user?.name || "User"}
           </p>
         </div>
-        <Link href="/upload">
-          <Button size="lg">Upload New Statement</Button>
-        </Link>
+        <div className="flex gap-3">
+          <Link href="/sheets">
+            <Button variant="outline" size="lg">View Sheets</Button>
+          </Link>
+          <Link href="/upload">
+            <Button size="lg">Upload New Statement</Button>
+          </Link>
+        </div>
       </div>
 
       {hasError && (

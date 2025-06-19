@@ -47,7 +47,7 @@ export function UploadForm() {
   const uploadMutation = api.statement.upload.useMutation({
     onSuccess: () => {
       toast.success("Statement uploaded successfully", {
-        description: "Your statement is now processing. You can view its status on the dashboard.",
+        description: "Your statement is now processing. Once complete, your updated financial data will appear in your sheets.",
         duration: 5000,
       });
     },
@@ -142,7 +142,7 @@ export function UploadForm() {
 
     // Toast notification before redirecting
     toast.info("Uploading statement...", {
-      description: "You'll be redirected to the dashboard",
+      description: "You'll be redirected to view your updated sheets",
       duration: 3000,
     });
 
@@ -153,8 +153,8 @@ export function UploadForm() {
       fileUrl: fileUrl,
     });
 
-    // Immediately redirect to dashboard
-    router.push("/dashboard");
+    // Immediately redirect to sheets page
+    router.push("/sheets");
   };
 
   const handleConfirmUpload = () => {
