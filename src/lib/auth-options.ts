@@ -14,6 +14,8 @@ export const authOptions: NextAuthOptions = {
       authorization: {
         params: {
           scope: "openid email profile https://www.googleapis.com/auth/spreadsheets",
+          access_type: "offline",
+          prompt: "consent",
         },
       },
     }),
@@ -116,6 +118,20 @@ export const authOptions: NextAuthOptions = {
                   session_state: account.session_state,
                 },
               });
+            } else {
+              // Update existing account with new tokens (important for refresh tokens)
+              await prisma.account.update({
+                where: { id: existingAccount.id },
+                data: {
+                  refresh_token: account.refresh_token,
+                  access_token: account.access_token,
+                  expires_at: account.expires_at,
+                  token_type: account.token_type,
+                  scope: account.scope,
+                  id_token: account.id_token,
+                  session_state: account.session_state,
+                },
+              });
             }
 
             // Update the user object with the existing user's ID
@@ -159,14 +175,24 @@ export const authOptions: NextAuthOptions = {
       }
     },
     async redirect({ url, baseUrl }) {
-      // Redirect to dashboard after successful sign in
+      console.log('NextAuth redirect:', { url, baseUrl }); // Debug log
+      
+      // If no specific URL, go to dashboard
       if (url === baseUrl || url === "/") {
         return `${baseUrl}/dashboard`;
       }
-      // Allow callback URLs on the same origin
+      
+      // Allow callback URLs on the same origin (including /settings)
       if (url.startsWith(baseUrl)) {
         return url;
       }
+      
+      // Handle relative URLs (like "/settings")
+      if (url.startsWith("/")) {
+        return `${baseUrl}${url}`;
+      }
+      
+      // Default fallback
       return `${baseUrl}/dashboard`;
     },
   },
