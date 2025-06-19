@@ -32,6 +32,11 @@ export function MainHeader() {
       label: "Upload Statement",
       active: pathname === "/upload",
     },
+    {
+      href: "/sheets",
+      label: "View Sheets",
+      active: pathname === "/sheets",
+    },
   ];
 
   return (
