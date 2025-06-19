@@ -13,7 +13,7 @@ require("dotenv").config();
 const path = require("path");
 const fs = require("fs").promises;
 const { ImageAnnotatorClient } = require("@google-cloud/vision");
-const pdfPoppler = require("pdf-poppler");
+const PDFImage = require("pdf-image").PDFImage;
 const { exec } = require("child_process");
 const { promisify } = require("util");
 
@@ -33,23 +33,19 @@ async function convertPdfPageToImage(pdfPath, pageNum = 0) {
 
     // Generate a unique name for the output file
     const outputBaseName = `${pdfName}-page-${pageNum}-${Date.now()}`;
-    
-    // Use pdf-poppler to convert the page
-    console.log(`Converting PDF page to image...`);
-    
-    const options = {
-      format: 'jpeg',
-      out_dir: outputDir,
-      out_prefix: outputBaseName,
-      page: pageNum + 1, // pdf-poppler uses 1-based page numbering
-      quality: 100,
-      density: 300
-    };
+    const outputPath = path.join(outputDir, outputBaseName);
 
-    await pdfPoppler.convert(pdfPath, options);
-    
-    // pdf-poppler creates files with format: prefix.page_number.format
-    const imagePath = path.join(outputDir, `${outputBaseName}.${pageNum + 1}.jpeg`);
+    // Use pdf-image to convert the page
+    const pdfImage = new PDFImage(pdfPath, {
+      combinedImage: false,
+      convertOptions: {
+        "-density": "300",
+        "-quality": "100",
+      },
+    });
+
+    console.log(`Converting PDF page to image...`);
+    const imagePath = await pdfImage.convertPage(pageNum);
     console.log(`PDF page converted to: ${imagePath}`);
 
     return imagePath;

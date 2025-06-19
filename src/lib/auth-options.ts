@@ -17,8 +17,6 @@ export const authOptions: NextAuthOptions = {
       authorization: {
         params: {
           scope: "openid email profile https://www.googleapis.com/auth/spreadsheets",
-          access_type: "offline",
-          prompt: "consent",
         },
       },
     }),
@@ -112,20 +110,6 @@ export const authOptions: NextAuthOptions = {
                   type: account.type,
                   provider: account.provider,
                   providerAccountId: account.providerAccountId,
-                  refresh_token: account.refresh_token,
-                  access_token: account.access_token,
-                  expires_at: account.expires_at,
-                  token_type: account.token_type,
-                  scope: account.scope,
-                  id_token: account.id_token,
-                  session_state: account.session_state,
-                },
-              });
-            } else {
-              // Update existing account with new tokens (especially refresh_token)
-              await prisma.account.update({
-                where: { id: existingAccount.id },
-                data: {
                   refresh_token: account.refresh_token,
                   access_token: account.access_token,
                   expires_at: account.expires_at,

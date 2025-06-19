@@ -9,24 +9,10 @@ import {
 import { LogoutButton } from "@/components/auth/logout-button";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { GoogleSheetsSection } from "@/components/settings/google-sheets-section";
-import { prisma } from "@/lib/prisma";
 
 export default async function SettingsPage() {
   const session = await requireAuth();
   const user = session.user;
-
-  // Check if user has Google account connected with Sheets scope
-  const googleAccount = await prisma.account.findFirst({
-    where: {
-      userId: session.user.id,
-      provider: "google",
-    },
-  });
-
-  // Check if the Google account has the required Sheets scope
-  const hasSheetsPermission = googleAccount?.scope?.includes("https://www.googleapis.com/auth/spreadsheets") || false;
 
   return (
     <div className="container mx-auto py-10">
@@ -67,31 +53,7 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Google Sheets Integration Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Google Sheets Export</span>
-              <Badge variant={hasSheetsPermission ? "default" : "secondary"}>
-                {hasSheetsPermission ? "Ready" : "Setup Required"}
-              </Badge>
-            </CardTitle>
-            <CardDescription>
-              Connect your Google account to export transactions to Google Sheets
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <GoogleSheetsSection 
-              isConnected={!!googleAccount}
-              hasSheetsPermission={hasSheetsPermission}
-              userEmail={session.user.email}
-            />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Preferences Section (Full Width) */}
-      <div className="mt-8">
+        {/* Preferences Section (for future expansion) */}
         <Card>
           <CardHeader>
             <CardTitle>Preferences</CardTitle>

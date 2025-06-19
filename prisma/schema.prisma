@@ -26,7 +26,6 @@ model User {
   statements    Statement[]
   categories    Category[]
   bankAccounts  BankAccount[]
-  personalFinanceSpreadsheet PersonalFinanceSpreadsheet?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -113,11 +112,8 @@ enum StatementStatus {
   UPLOADED
   PROCESSING
   REVIEW_NEEDED
-  EXPORT_QUEUED    // Ready for background export
-  EXPORTING        // Export in progress
-  EXPORT_RETRYING  // Retry attempt in progress
-  COMPLETED        // Successfully exported
-  FAILED           // Failed after retry attempts
+  COMPLETED
+  FAILED
 }
 
 model Statement {
@@ -134,23 +130,15 @@ model Statement {
   periodStart        DateTime?       // Statement period start date
   periodEnd          DateTime?       // Statement period end date
 
-  // Export tracking fields
-  exportAttempts     Int             @default(0)        // Track retry count (0-3)
-  exportError        String?         @db.Text           // Last export error message
-  exportedAt         DateTime?                          // When successfully exported
-  lastRetryAt        DateTime?                          // When last retry was attempted
-
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   accounts     BankAccount[] // Many-to-many relationship via an implicit junction table
   transactions Transaction[]
-  exportJobs   ExportJob[]   // Track export jobs for this statement
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
   @@index([userId])
   @@index([status])
-  @@index([exportAttempts])
 }
 
 model Transaction {
@@ -163,16 +151,8 @@ model Transaction {
   originalText    String?   @db.Text // Use Text type for longer strings
   needsReview     Boolean   @default(false)
 
-  // Export tracking fields
-  exported        Boolean   @default(false)    // Whether exported to Google Sheets
-  exportedAt      DateTime?                    // When this transaction was exported
-  monthlySheetId  String?                      // Which monthly sheet this was exported to
-  cleanedMerchant String?                      // Cleaned merchant name for sheets
-  assignedCategory String?                     // Category assigned for export
-
-  statement    Statement     @relation(fields: [statementId], references: [id], onDelete: Cascade)
-  category     Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  monthlySheet MonthlySheet? @relation(fields: [monthlySheetId], references: [id], onDelete: SetNull)
+  statement Statement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  category  Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -180,8 +160,6 @@ model Transaction {
   @@index([statementId])
   @@index([categoryId])
   @@index([transactionDate])
-  @@index([exported])
-  @@index([monthlySheetId])
 }
 
 model Category {
@@ -218,92 +196,5 @@ model GoogleSheetConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  @@index([userId])
-}
-
-// Model for tracking the main "Personal Finance" spreadsheet per user
-model PersonalFinanceSpreadsheet {
-  id              String    @id @default(cuid())
-  userId          String    @unique
-  spreadsheetId   String    // Google Sheets spreadsheet ID
-  spreadsheetName String    @default("Personal Finance")
-  spreadsheetUrl  String?   // Direct URL to the spreadsheet
-  
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  monthlySheets MonthlySheet[] // All monthly sheets within this spreadsheet
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  @@index([userId])
-  @@index([spreadsheetId])
-}
-
-// Model for tracking individual monthly sheets within the Personal Finance spreadsheet
-model MonthlySheet {
-  id                     String    @id @default(cuid())
-  personalFinanceSheetId String    // Reference to the main spreadsheet
-  sheetId                Int       // Google Sheets internal sheet ID (gid)
-  sheetName              String    // "Expense Tracker Oct 2024"
-  monthKey               String    // "2024-10" for easy querying
-  year                   Int       // 2024
-  month                  Int       // 10 (1-12)
-  
-  transactionCount       Int       @default(0)
-  lastUpdated           DateTime   @default(now())
-  
-  personalFinanceSheet PersonalFinanceSpreadsheet @relation(fields: [personalFinanceSheetId], references: [id], onDelete: Cascade)
-  transactions         Transaction[]              // Transactions exported to this sheet
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  @@unique([personalFinanceSheetId, monthKey]) // One sheet per month per user
-  @@index([monthKey])
-  @@index([year, month])
-  @@index([personalFinanceSheetId])
-}
-
-// Model for tracking background export jobs
-enum ExportJobStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-model ExportJob {
-  id          String          @id @default(cuid())
-  statementId String
-  userId      String
-  status      ExportJobStatus @default(PENDING)
-  
-  // Retry logic
-  attempts    Int             @default(0)
-  maxAttempts Int             @default(3)
-  nextRetryAt DateTime?       // When to attempt next retry
-  
-  // Job details
-  totalTransactions    Int       @default(0)
-  processedTransactions Int      @default(0)
-  failedTransactions   Int       @default(0)
-  
-  // Error tracking
-  errorMessage String?         @db.Text
-  errorDetails String?         @db.Text // JSON string with detailed error info
-  
-  // Timing
-  startedAt   DateTime?
-  completedAt DateTime?
-  
-  statement Statement @relation(fields: [statementId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  @@index([status])
-  @@index([nextRetryAt])
-  @@index([statementId])
   @@index([userId])
 }
