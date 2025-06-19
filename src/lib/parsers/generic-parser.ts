@@ -22,12 +22,26 @@ export class GenericBankStatementParser extends BankStatementParser {
   public async process(): Promise<ProcessedStatementData> {
     console.log(`Processing generic statement for: ${this.bankName}`);
     
-    // For generic parser, we'll just use the basic data extraction
+    // For now, return base data with an empty account
     const baseData = this.createBaseData(this.bankName);
     
-    // Save the extracted data for analysis
-    await this.saveExtractedData(baseData);
+    // Add a basic account structure
+    const account = {
+      accountNumberLast4: 'unknown',
+      accountType: null,
+      allTransactions: {
+        deposits: [],
+        atmDebit: [],
+        withdrawals: [],
+        checks: [],
+        fees: [],
+        other: []
+      }
+    };
     
+    baseData.accounts = [account];
+
+    console.log(`Generic parser completed. Found ${baseData.accounts.length} accounts.`);
     return baseData;
   }
 } 

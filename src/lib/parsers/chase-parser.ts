@@ -42,9 +42,7 @@ export class ChaseStatementParser extends BankStatementParser {
         await this.processTransactionPage(transactionPageNumber, baseData);
       }
       
-      // Save the extracted data for analysis
-      await this.saveExtractedData(baseData);
-      
+      console.log(`Chase parser completed. Found ${baseData.accounts.length} accounts.`);
       return baseData;
       
     } catch (error) {
