@@ -66,8 +66,9 @@ export class BankOfAmericaStatementParser extends BankStatementParser {
 
          await this.processAccountDetailPages(baseData);
       
-
-         console.log(`Bank of America parser completed. Found ${baseData.accounts.length} accounts.`);
+         // Save the extracted data for analysis
+         await this.saveExtractedData(baseData);
+      
          return baseData;
       
       } catch (error) {
