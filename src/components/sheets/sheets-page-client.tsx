@@ -1,10 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GoogleSheetsEmbed } from "@/components/sheets/google-sheets-embed";
 import { ExternalLink, RefreshCw, Plus } from "lucide-react";
 import Link from "next/link";
+
+type ViewMode = "edit" | "view" | "preview";
+type EmbedSize = "compact" | "normal" | "fullscreen";
 
 interface SheetsPageClientProps {
   personalFinanceSpreadsheet: {
@@ -27,6 +32,9 @@ export function SheetsPageClient({
   hasSheetsPermission, 
   userEmail 
 }: SheetsPageClientProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>("view");
+  const [embedSize, setEmbedSize] = useState<EmbedSize>("fullscreen");
+
   const handleRefresh = () => {
     window.location.reload();
   };
@@ -84,72 +92,62 @@ export function SheetsPageClient({
     );
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Action Buttons */}
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" asChild>
-          <a 
-            href={personalFinanceSpreadsheet.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${personalFinanceSpreadsheet.spreadsheetId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1"
-          >
-            <ExternalLink className="h-4 w-4" />
-            Open in Google Sheets
-          </a>
-        </Button>
-        <Button variant="outline" size="sm" onClick={handleRefresh}>
-          <RefreshCw className="h-4 w-4 mr-1" />
-          Refresh
-        </Button>
+    return (
+    <Card className="h-full">
+      <div className="px-4 py-1 border-b">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Personal Finance Spreadsheet</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <Select value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
+              <SelectTrigger className="w-20 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="view">View</SelectItem>
+                <SelectItem value="edit">Edit</SelectItem>
+                <SelectItem value="preview">Preview</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={embedSize} onValueChange={(value) => setEmbedSize(value as EmbedSize)}>
+              <SelectTrigger className="w-20 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="compact">Small</SelectItem>
+                <SelectItem value="normal">Normal</SelectItem>
+                <SelectItem value="fullscreen">Full</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button variant="outline" size="sm" asChild>
+              <a 
+                href={personalFinanceSpreadsheet.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${personalFinanceSpreadsheet.spreadsheetId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Open in Google Sheets
+              </a>
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleRefresh}>
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Refresh
+            </Button>
+          </div>
+        </div>
       </div>
-
-      {/* Monthly Sheets Overview */}
-      {personalFinanceSpreadsheet.monthlySheets.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Monthly Sheets</CardTitle>
-            <CardDescription>
-              Quick access to your latest financial data
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {personalFinanceSpreadsheet.monthlySheets.map((sheet) => (
-                <div
-                  key={sheet.id}
-                  className="p-3 border rounded-lg hover:bg-accent transition-colors"
-                >
-                  <div className="font-medium text-sm">{sheet.sheetName}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {sheet.transactionCount} transactions
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Last updated: {new Date(sheet.lastUpdated).toLocaleDateString()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Embedded Google Sheets */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Personal Finance Spreadsheet</CardTitle>
-          <CardDescription>
-            Interactive view of your financial data exported to Google Sheets
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <GoogleSheetsEmbed 
-            spreadsheetId={personalFinanceSpreadsheet.spreadsheetId}
-            spreadsheetUrl={personalFinanceSpreadsheet.spreadsheetUrl}
-          />
-        </CardContent>
-      </Card>
-    </div>
+      <CardContent className="p-0 h-full">
+        <GoogleSheetsEmbed 
+          spreadsheetId={personalFinanceSpreadsheet.spreadsheetId}
+          spreadsheetUrl={personalFinanceSpreadsheet.spreadsheetUrl}
+          viewMode={viewMode}
+          embedSize={embedSize}
+        />
+      </CardContent>
+    </Card>
   );
 } 

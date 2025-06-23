@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { AlertCircle, Loader2, Maximize2, Minimize2, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface GoogleSheetsEmbedProps {
   spreadsheetId: string;
   spreadsheetUrl?: string | null;
   className?: string;
+  viewMode: ViewMode;
+  embedSize: EmbedSize;
 }
 
 type ViewMode = "edit" | "view" | "preview";
@@ -20,13 +20,12 @@ type EmbedSize = "compact" | "normal" | "fullscreen";
 export function GoogleSheetsEmbed({ 
   spreadsheetId, 
   spreadsheetUrl, 
-  className 
+  className,
+  viewMode,
+  embedSize
 }: GoogleSheetsEmbedProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("view");
-  const [embedSize, setEmbedSize] = useState<EmbedSize>("normal");
-  const [showControls, setShowControls] = useState(true);
 
   // Generate the embed URL based on current settings
   const getEmbedUrl = () => {
@@ -51,9 +50,9 @@ export function GoogleSheetsEmbed({
       case "normal":
         return "h-[600px]";
       case "fullscreen":
-        return "h-[80vh]";
+        return "h-[85vh]";
       default:
-        return "h-[600px]";
+        return "h-[85vh]";
     }
   };
 
@@ -87,91 +86,7 @@ export function GoogleSheetsEmbed({
   }
 
   return (
-    <div className={cn("space-y-4", className)}>
-      {/* Controls */}
-      {showControls && (
-        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-muted/50 rounded-lg">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">View Mode</label>
-              <Select value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="view">
-                    <div className="flex items-center gap-2">
-                      <Eye className="h-3 w-3" />
-                      View
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="edit">
-                    <div className="flex items-center gap-2">
-                      <Maximize2 className="h-3 w-3" />
-                      Edit
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="preview">
-                    <div className="flex items-center gap-2">
-                      <EyeOff className="h-3 w-3" />
-                      Preview
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Size</label>
-              <Select value={embedSize} onValueChange={(value) => setEmbedSize(value as EmbedSize)}>
-                <SelectTrigger className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="compact">Compact</SelectItem>
-                  <SelectItem value="normal">Normal</SelectItem>
-                  <SelectItem value="fullscreen">Fullscreen</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="text-xs">
-                {isLoading ? "Loading..." : hasError ? "Error" : "Ready"}
-              </Badge>
-              {viewMode === "edit" && (
-                <Badge variant="outline" className="text-xs">
-                  Interactive
-                </Badge>
-              )}
-            </div>
-          </div>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowControls(false)}
-            className="text-muted-foreground"
-          >
-            <Minimize2 className="h-4 w-4" />
-            Hide Controls
-          </Button>
-        </div>
-      )}
-
-      {!showControls && (
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowControls(true)}
-            className="text-muted-foreground"
-          >
-            <Maximize2 className="h-4 w-4" />
-            Show Controls
-          </Button>
-        </div>
-      )}
+    <div className={cn("", className)}>
 
       {/* Embed Container */}
       <div className="relative">
@@ -244,17 +159,7 @@ export function GoogleSheetsEmbed({
         />
       </div>
 
-      {/* Help Text */}
-      <div className="text-xs text-muted-foreground space-y-1">
-        <p>
-          <strong>Tip:</strong> Use "Edit" mode for full functionality, "View" for read-only access, or "Preview" for a simplified view.
-        </p>
-        {viewMode === "edit" && (
-          <p className="text-amber-600">
-            <strong>Note:</strong> Changes made here will be saved directly to your Google Sheets.
-          </p>
-        )}
-      </div>
+
     </div>
   );
 } 
