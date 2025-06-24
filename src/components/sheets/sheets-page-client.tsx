@@ -33,7 +33,7 @@ export function SheetsPageClient({
   userEmail 
 }: SheetsPageClientProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("view");
-  const [embedSize, setEmbedSize] = useState<EmbedSize>("fullscreen");
+  const [embedSize, setEmbedSize] = useState<EmbedSize>("normal");
 
   const handleRefresh = () => {
     window.location.reload();

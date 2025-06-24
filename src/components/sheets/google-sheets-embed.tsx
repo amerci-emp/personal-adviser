@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle, Loader2 } from "lucide-react";
@@ -26,6 +26,8 @@ export function GoogleSheetsEmbed({
 }: GoogleSheetsEmbedProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Generate the embed URL based on current settings
   const getEmbedUrl = () => {
@@ -35,7 +37,7 @@ export function GoogleSheetsEmbed({
       case "edit":
         return `${baseUrl}/edit?usp=sharing&embedded=true`;
       case "view":
-        return `${baseUrl}/edit?usp=sharing&embedded=true&rm=minimal`;
+        return `${baseUrl}/edit?usp=sharing&embedded=true&rm=minimal&chrome=false`;
       case "preview":
         return `${baseUrl}/preview?usp=sharing&embedded=true`;
       default:
@@ -72,6 +74,50 @@ export function GoogleSheetsEmbed({
     setHasError(false);
   }, [viewMode, spreadsheetId]);
 
+  // Touch event handlers to prevent swipe navigation
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!touchStartRef.current) return;
+
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - touchStartRef.current.x;
+      const deltaY = touch.clientY - touchStartRef.current.y;
+
+      // Calculate if this is primarily a horizontal swipe
+      const isHorizontalSwipe = Math.abs(deltaX) > Math.abs(deltaY);
+      const isSignificantSwipe = Math.abs(deltaX) > 30; // Minimum distance to consider it a swipe
+
+      // Prevent navigation if it's a significant horizontal swipe
+      if (isHorizontalSwipe && isSignificantSwipe) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    const handleTouchEnd = () => {
+      touchStartRef.current = null;
+    };
+
+    // Add event listeners with passive: false to allow preventDefault
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []);
+
   if (!spreadsheetId) {
     return (
       <Card className="border-destructive">
@@ -89,7 +135,11 @@ export function GoogleSheetsEmbed({
     <div className={cn("", className)}>
 
       {/* Embed Container */}
-      <div className="relative">
+      <div 
+        ref={containerRef}
+        className="relative"
+        style={{ touchAction: 'pan-y' }} // Allow vertical panning only
+      >
         {/* Loading State */}
         {isLoading && (
           <div className={cn(
