@@ -7,7 +7,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -15,14 +14,14 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
-import { FileUpload } from "./file-upload";
+import { FileUpload } from "@/components/ui/file-upload";
 import { api } from "@/trpc/client";
 import { toast } from "sonner";
-import { FileCheck, Upload, Loader2, AlertCircle, Info, Calendar, Badge, CreditCard } from "lucide-react";
+import { FileCheck, Upload, Loader2, AlertCircle, Info, Calendar, CreditCard, Plus } from "lucide-react";
 import { format } from "date-fns";
 
 // Format date helper
@@ -35,28 +34,48 @@ function formatDate(dateStr: string | Date | null | undefined): string {
   }
 }
 
-export function UploadForm() {
+interface UploadModalProps {
+  children?: React.ReactNode;
+}
+
+export function UploadModal({ children }: UploadModalProps) {
   const router = useRouter();
+  const [isOpen, setIsOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [duplicateInfo, setDuplicateInfo] = useState<any>(null);
 
+  // Reset state when modal closes
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      setIsUploading(false);
+      setSelectedFile(null);
+      setFileUrl(null);
+      setShowDuplicateDialog(false);
+      setDuplicateInfo(null);
+    }
+  };
+
   // Handle error type in onError properly
   const uploadMutation = api.statement.upload.useMutation({
     onSuccess: () => {
       toast.success("Statement uploaded successfully", {
-        description: "Your statement is now processing. Once complete, your updated financial data will appear in your sheets.",
+        description: "Your statement is now processing. The page will refresh to show updated data.",
         duration: 5000,
       });
+      setIsOpen(false);
+      // Refresh the current page to show updated data
+      router.refresh();
     },
     onError: (error: any) => {
       toast.error("Failed to upload statement", {
         description: error.message || "Something went wrong. Please try again.",
         duration: 5000,
       });
-      router.push("/dashboard");
+      setIsUploading(false);
     },
   });
 
@@ -140,21 +159,18 @@ export function UploadForm() {
       return;
     }
 
-    // Toast notification before redirecting
-    toast.info("Uploading statement...", {
-      description: "You'll be redirected to view your updated sheets",
+    // Toast notification before processing
+    toast.info("Processing statement...", {
+      description: "This may take a few moments",
       duration: 3000,
     });
 
-    // Create the statement record in the background
+    // Create the statement record
     uploadMutation.mutate({
       filename: selectedFile.name,
       fileType: selectedFile.type,
       fileUrl: fileUrl,
     });
-
-    // Immediately redirect to sheets page
-    router.push("/sheets");
   };
 
   const handleConfirmUpload = () => {
@@ -169,57 +185,67 @@ export function UploadForm() {
 
   return (
     <>
-      <Card className="max-w-2xl mx-auto">
-        <CardHeader>
-          <CardTitle>Upload Financial Statement</CardTitle>
-          <CardDescription>
-            Upload your bank or credit card statement to track your expenses
-          </CardDescription>
-        </CardHeader>
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+        <DialogTrigger asChild>
+          {children || (
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Upload Statement
+            </Button>
+          )}
+        </DialogTrigger>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Upload Financial Statement</DialogTitle>
+            <DialogDescription>
+              Upload your bank or credit card statement to track your expenses
+            </DialogDescription>
+          </DialogHeader>
 
-        <CardContent>
-          <FileUpload onFileSelected={handleFileSelected} />
+          <div className="space-y-6">
+            <FileUpload onFileSelected={handleFileSelected} />
 
-          <div className="mt-6 space-y-2">
-            <h3 className="text-sm font-medium flex items-center gap-1">
-              <FileCheck className="h-4 w-4" />
-              Tips for best results
-            </h3>
-            <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-              <li>Use PDF statements directly from your bank</li>
-              <li>Ensure the PDF is not password protected</li>
-              <li>Statements should include account details and transaction history</li>
-            </ul>
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium flex items-center gap-1">
+                <FileCheck className="h-4 w-4" />
+                Tips for best results
+              </h3>
+              <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+                <li>Use PDF statements directly from your bank</li>
+                <li>Ensure the PDF is not password protected</li>
+                <li>Statements should include account details and transaction history</li>
+              </ul>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsOpen(false)}
+                disabled={isUploading}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleUpload} 
+                disabled={!selectedFile || isUploading}
+                className="gap-2"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {fileUrl ? "Checking for duplicates..." : "Uploading..."}
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4" />
+                    Upload Statement
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
-        </CardContent>
-
-        <CardFooter className="flex justify-between">
-          <Button
-            variant="outline"
-            onClick={() => router.push("/dashboard")}
-            disabled={isUploading}
-          >
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleUpload} 
-            disabled={!selectedFile || isUploading}
-            className="gap-2"
-          >
-            {isUploading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {fileUrl ? "Checking for duplicates..." : "Uploading..."}
-              </>
-            ) : (
-              <>
-                <Upload className="h-4 w-4" />
-                Upload Statement
-              </>
-            )}
-          </Button>
-        </CardFooter>
-      </Card>
+        </DialogContent>
+      </Dialog>
 
       {/* Duplicate Statement Dialog */}
       <Dialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
@@ -333,16 +359,16 @@ export function UploadForm() {
             </div>
           )}
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={handleCancelUpload}>
               Cancel Upload
             </Button>
             <Button onClick={handleConfirmUpload}>
               Proceed with Upload
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </>
   );
-}
+} 
