@@ -28,13 +28,8 @@ export function MainHeader() {
       active: pathname === "/dashboard",
     },
     {
-      href: "/upload",
-      label: "Upload Statement",
-      active: pathname === "/upload",
-    },
-    {
       href: "/sheets",
-      label: "View Sheets",
+      label: "Sheets",
       active: pathname === "/sheets",
     },
   ];

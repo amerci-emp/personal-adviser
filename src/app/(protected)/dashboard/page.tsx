@@ -27,9 +27,11 @@ import {
   FileText,
   Upload,
   AlertTriangle,
+  Plus,
 } from "lucide-react";
 import { format, formatDistance } from "date-fns";
 import { prisma } from "@/lib/prisma";
+import { UploadModal } from "@/components/sheets/upload-modal";
 
 // Helper function to get the appropriate icon for account type
 function getAccountTypeIcon(type: string) {
@@ -198,9 +200,12 @@ export default async function DashboardPage() {
           <Link href="/sheets">
             <Button variant="outline" size="lg">View Sheets</Button>
           </Link>
-          <Link href="/upload">
-            <Button size="lg">Upload New Statement</Button>
-          </Link>
+          <UploadModal>
+            <Button size="lg">
+              <Plus className="h-4 w-4 mr-2" />
+              Upload New Statement
+            </Button>
+          </UploadModal>
         </div>
       </div>
 
@@ -242,9 +247,12 @@ export default async function DashboardPage() {
                   <p className="text-muted-foreground mt-1 mb-4">
                     Upload a statement to automatically create your first account.
                   </p>
-                  <Link href="/upload">
-                    <Button variant="outline">Upload Statement</Button>
-                  </Link>
+                  <UploadModal>
+                    <Button variant="outline">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Upload Statement
+                    </Button>
+                  </UploadModal>
                 </div>
               ) : (
                 <Tabs defaultValue={institutions[0] || "all"}>
@@ -359,9 +367,12 @@ export default async function DashboardPage() {
                   <p className="text-sm text-muted-foreground mt-1 mb-4">
               Upload your first financial statement to get started.
             </p>
-            <Link href="/upload">
-                    <Button variant="outline" size="sm">Upload Statement</Button>
-            </Link>
+            <UploadModal>
+                    <Button variant="outline" size="sm">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Upload Statement
+                    </Button>
+            </UploadModal>
           </div>
               ) : (
                 <>

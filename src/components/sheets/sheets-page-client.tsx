@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GoogleSheetsEmbed } from "@/components/sheets/google-sheets-embed";
-import { ExternalLink, RefreshCw, Plus } from "lucide-react";
+import { UploadModal } from "@/components/sheets/upload-modal";
+import { ExternalLink, RefreshCw, Plus, Upload } from "lucide-react";
 import Link from "next/link";
 
 type ViewMode = "edit" | "view" | "preview";
@@ -81,11 +82,12 @@ export function SheetsPageClient({
             <p className="text-sm text-muted-foreground">
               Upload and process some bank statements to see your financial data here.
             </p>
-            <Link href="/upload">
+            <UploadModal>
               <Button>
+                <Plus className="h-4 w-4 mr-2" />
                 Upload Your First Statement
               </Button>
-            </Link>
+            </UploadModal>
           </div>
         </CardContent>
       </Card>
@@ -100,6 +102,13 @@ export function SheetsPageClient({
             <h2 className="text-lg font-semibold">Personal Finance Spreadsheet</h2>
           </div>
           <div className="flex items-center gap-2">
+            <UploadModal>
+              <Button size="sm" className="gap-1">
+                <Upload className="h-3 w-3" />
+                Upload Statement
+              </Button>
+            </UploadModal>
+
             <Select value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
               <SelectTrigger className="w-20 h-8">
                 <SelectValue />
