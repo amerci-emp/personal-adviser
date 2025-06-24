@@ -11,6 +11,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { GoogleSheetsSection } from "@/components/settings/google-sheets-section";
+import { CategoryCustomization } from "@/components/settings/category-customization";
 import { prisma } from "@/lib/prisma";
 
 export default async function SettingsPage() {
@@ -90,21 +91,9 @@ export default async function SettingsPage() {
         </Card>
       </div>
 
-      {/* Preferences Section (Full Width) */}
+      {/* Category Customization Section (Full Width) */}
       <div className="mt-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Preferences</CardTitle>
-            <CardDescription>
-              Customize your application experience
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8 text-muted-foreground">
-              <p>Preference settings will be added in a future update.</p>
-            </div>
-          </CardContent>
-        </Card>
+        <CategoryCustomization />
       </div>
     </div>
   );

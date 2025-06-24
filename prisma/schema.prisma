@@ -27,6 +27,7 @@ model User {
   categories    Category[]
   bankAccounts  BankAccount[]
   personalFinanceSpreadsheet PersonalFinanceSpreadsheet?
+  categoryPreferences CategoryPreferences?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -306,4 +307,45 @@ model ExportJob {
   @@index([nextRetryAt])
   @@index([statementId])
   @@index([userId])
+}
+
+// Model for storing user's customized category preferences
+enum UserType {
+  STUDENT
+  YOUNG_PROFESSIONAL
+  HOMEOWNER
+  RENTER
+  RETIREE
+  CUSTOM
+}
+
+enum MigrationPolicy {
+  NEW_SHEETS_ONLY      // Apply changes only to new monthly sheets
+  MIGRATE_ALL          // Apply changes to all existing sheets (with migration)
+  ASK_EACH_TIME        // Ask user each time
+}
+
+model CategoryPreferences {
+  id            String          @id @default(cuid())
+  userId        String          @unique
+  userType      UserType?       // Optional preset type
+  version       Int             @default(1) // For handling schema changes
+  effectiveDate DateTime        @default(now()) // When these preferences become active
+  
+  // Migration settings
+  migrationPolicy    MigrationPolicy @default(NEW_SHEETS_ONLY)
+  lastMigrationAt    DateTime?       // When last migration was performed
+  backupCreated      Boolean         @default(false) // Whether backup exists
+  
+  // JSON structure for category configuration
+  // Example: {"Debt": {"enabled": true, "subcategories": ["Credit Card"]}}
+  categoryConfig     Json            // Flexible JSON storage for category structure
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([userId])
+  @@index([effectiveDate])
 }
