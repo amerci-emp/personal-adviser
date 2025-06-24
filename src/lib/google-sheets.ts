@@ -139,7 +139,7 @@ export class GoogleSheetsService {
       }
 
       // Create the template for monthly expense tracking
-      const template = this.getMonthlySheetTemplate(sheetName);
+      const template = await this.getMonthlySheetTemplate(userId, sheetName);
 
       // Add new sheet to spreadsheet
       const response = await this.sheets.spreadsheets.batchUpdate({
@@ -199,8 +199,33 @@ export class GoogleSheetsService {
 
   /**
    * Get the template structure for monthly expense tracking sheets
+   * Now supports custom user preferences
    */
-  private getMonthlySheetTemplate(sheetName: string): MonthlySheetTemplate {
+  private async getMonthlySheetTemplate(userId: string, sheetName: string): Promise<MonthlySheetTemplate> {
+    // Try to get user's category preferences
+    let categoryConfig: any = null;
+    try {
+      const preferences = await prisma.categoryPreferences.findUnique({
+        where: { userId }
+      });
+      categoryConfig = preferences?.categoryConfig;
+    } catch (error) {
+      console.log('Could not fetch category preferences, using defaults:', error);
+    }
+
+    // Use default template if no preferences found
+    if (!categoryConfig) {
+      return this.getDefaultTemplate(sheetName);
+    }
+
+    // Build custom template from user preferences
+    return this.buildCustomTemplate(sheetName, categoryConfig);
+  }
+
+  /**
+   * Get the default template structure (full categories)
+   */
+  private getDefaultTemplate(sheetName: string): MonthlySheetTemplate {
     return {
       sheetName,
       headers: [
@@ -294,8 +319,51 @@ export class GoogleSheetsService {
         'Personal': { startColumn: 15, endColumn: 17, color: '#9900ff' },
         'Recreation': { startColumn: 18, endColumn: 21, color: '#ff9900' },
         'Transportation': { startColumn: 22, endColumn: 27, color: '#000000' },
-        'Business/Work-Related': { startColumn: 28, endColumn: 28, color: '#666666' },
+        'Business': { startColumn: 28, endColumn: 28, color: '#666666' },
       },
+    };
+  }
+
+  /**
+   * Build custom template from user category preferences
+   */
+  private buildCustomTemplate(sheetName: string, categoryConfig: any): MonthlySheetTemplate {
+    const headers = ['Date', 'Items'];
+    const headerColors: { [key: string]: string } = {};
+    const mainCategories: { [key: string]: { startColumn: number; endColumn: number; color: string } } = {};
+
+    let currentColumn = 2; // Start after Date and Items columns
+
+    // Process each enabled category
+    Object.entries(categoryConfig).forEach(([categoryName, config]: [string, any]) => {
+      if (config.enabled && config.subcategories && config.subcategories.length > 0) {
+        const startColumn = currentColumn;
+        const subcategories = config.subcategories as string[];
+        
+        // Add subcategory headers
+        subcategories.forEach((subcategory: string) => {
+          headers.push(subcategory);
+          headerColors[subcategory] = config.color || '#666666';
+        });
+
+        const endColumn = currentColumn + subcategories.length - 1;
+
+        // Add main category mapping
+        mainCategories[categoryName] = {
+          startColumn,
+          endColumn,
+          color: config.color || '#666666'
+        };
+
+        currentColumn = endColumn + 1;
+      }
+    });
+
+    return {
+      sheetName,
+      headers,
+      headerColors,
+      mainCategories
     };
   }
 
@@ -651,7 +719,7 @@ export class GoogleSheetsService {
         throw new Error(`Monthly sheet not found for ${monthKey}`);
       }
 
-      const template = this.getMonthlySheetTemplate(monthlySheet.sheetName);
+      const template = await this.getMonthlySheetTemplate(userId, monthlySheet.sheetName);
 
       // Convert transactions to sheet rows
       const rows = transactions.map((transaction) => 
