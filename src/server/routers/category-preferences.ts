@@ -2,8 +2,20 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 
+// Type definitions
+type CategoryConfig = {
+  enabled: boolean;
+  color: string;
+  subcategories: string[];
+};
+
+type UserPresetConfig = Record<string, {
+  enabled: boolean;
+  subcategories: string[];
+}>;
+
 // Default category structure
-export const DEFAULT_CATEGORIES = {
+export const DEFAULT_CATEGORIES: Record<string, CategoryConfig> = {
   "Debt": {
     enabled: true,
     color: "#FF0000",
@@ -47,7 +59,7 @@ export const DEFAULT_CATEGORIES = {
 } as const;
 
 // User type presets
-export const USER_TYPE_PRESETS = {
+export const USER_TYPE_PRESETS: Record<string, UserPresetConfig> = {
   STUDENT: {
     "Debt": { enabled: true, subcategories: ["College Loan", "Credit Card"] },
     "Food": { enabled: true, subcategories: ["Groceries", "Restaurants"] },
@@ -100,6 +112,7 @@ const CategoryConfigSchema = z.record(
 );
 
 const UserTypeSchema = z.enum(["STUDENT", "YOUNG_PROFESSIONAL", "HOMEOWNER", "RENTER", "RETIREE", "CUSTOM"]);
+const PresetUserTypeSchema = z.enum(["STUDENT", "YOUNG_PROFESSIONAL", "HOMEOWNER", "RENTER", "RETIREE"]);
 const MigrationPolicySchema = z.enum(["NEW_SHEETS_ONLY", "MIGRATE_ALL", "ASK_EACH_TIME"]);
 
 export const categoryPreferencesRouter = createTRPCRouter({
@@ -124,7 +137,7 @@ export const categoryPreferencesRouter = createTRPCRouter({
     return {
       id: preferences.id,
       userType: preferences.userType,
-      categoryConfig: preferences.categoryConfig as any,
+      categoryConfig: preferences.categoryConfig as Record<string, CategoryConfig>,
       migrationPolicy: preferences.migrationPolicy,
       effectiveDate: preferences.effectiveDate,
       lastMigrationAt: preferences.lastMigrationAt,
@@ -136,22 +149,27 @@ export const categoryPreferencesRouter = createTRPCRouter({
   // Apply a user type preset
   applyUserTypePreset: protectedProcedure
     .input(z.object({
-      userType: UserTypeSchema,
+      userType: PresetUserTypeSchema,
       migrationPolicy: MigrationPolicySchema.optional()
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
       const { userType, migrationPolicy = "NEW_SHEETS_ONLY" } = input;
 
-      // Get preset configuration
-      const presetConfig = USER_TYPE_PRESETS[userType];
+      // Get preset configuration with proper typing
+      const presetConfig: UserPresetConfig = USER_TYPE_PRESETS[userType];
+      
+      if (!presetConfig) {
+        throw new Error(`Invalid user type: ${userType}`);
+      }
       
       // Merge with default colors
-      const categoryConfig: any = {};
+      const categoryConfig: Record<string, CategoryConfig> = {};
       Object.entries(presetConfig).forEach(([category, config]) => {
         categoryConfig[category] = {
-          ...config,
-          color: DEFAULT_CATEGORIES[category as keyof typeof DEFAULT_CATEGORIES]?.color || "#666666"
+          enabled: config.enabled,
+          subcategories: [...config.subcategories],
+          color: DEFAULT_CATEGORIES[category]?.color || "#666666"
         };
       });
 
@@ -188,11 +206,12 @@ export const categoryPreferencesRouter = createTRPCRouter({
       const { categoryConfig, migrationPolicy = "NEW_SHEETS_ONLY" } = input;
 
       // Add colors to category config
-      const configWithColors: any = {};
+      const configWithColors: Record<string, CategoryConfig> = {};
       Object.entries(categoryConfig).forEach(([category, config]) => {
         configWithColors[category] = {
-          ...config,
-          color: DEFAULT_CATEGORIES[category as keyof typeof DEFAULT_CATEGORIES]?.color || "#666666"
+          enabled: config.enabled,
+          subcategories: [...config.subcategories],
+          color: DEFAULT_CATEGORIES[category]?.color || "#666666"
         };
       });
 
