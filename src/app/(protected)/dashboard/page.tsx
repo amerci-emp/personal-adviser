@@ -1,4 +1,5 @@
 import { requireAuth } from "@/lib/auth";
+import { redirect } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,13 +29,17 @@ import {
   Upload,
   AlertTriangle,
   Plus,
+  Zap,
 } from "lucide-react";
 import { format, formatDistance } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { UploadModal } from "@/components/sheets/upload-modal";
 
 // Helper function to get the appropriate icon for account type
-function getAccountTypeIcon(type: string) {
+function getAccountTypeIcon(type: string, isPlaid: boolean) {
+  if (isPlaid) {
+    return <Zap className="h-5 w-5 text-blue-500" />;
+  }
   switch (type) {
     case "CHECKING":
       return <Wallet className="h-5 w-5" />;
@@ -97,6 +102,7 @@ type BankAccount = {
   balance?: any;
   updatedAt: Date;
   statements: Statement[];
+  plaidAccounts: { id: string }[];
 };
 
 type Statement = {
@@ -111,6 +117,17 @@ type Statement = {
 
 export default async function DashboardPage() {
   const session = await requireAuth();
+
+  // --- Onboarding Redirect Logic ---
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { connectionType: true },
+  });
+
+  if (!user?.connectionType) {
+    redirect('/onboarding');
+  }
+  // --- End Onboarding Redirect ---
   
   // Initialize with empty data
   let accounts: BankAccount[] = [];
@@ -133,6 +150,11 @@ export default async function DashboardPage() {
           },
           take: 2,
         },
+        // Also include PlaidAccounts to know if it's a Plaid-linked account
+        plaidAccounts: {
+          select: { id: true },
+          take: 1,
+        }
       },
     });
     
@@ -273,7 +295,7 @@ export default async function DashboardPage() {
                         >
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-3">
-                              {getAccountTypeIcon(account.accountType)}
+                              {getAccountTypeIcon(account.accountType, account.plaidAccounts.length > 0)}
                               <div>
                                 <h3 className="font-medium">{account.name}</h3>
                                 <div className="text-sm text-muted-foreground">
@@ -296,7 +318,7 @@ export default async function DashboardPage() {
                           </div>
                           
                           {/* Recent statements for this account */}
-                          {account.statements && account.statements.length > 0 ? (
+                          {(account.statements && account.statements.length > 0) ? (
                             <div className="mt-3 pt-3 border-t">
                               <h4 className="text-sm font-medium mb-2">Recent Statements</h4>
                               <div className="space-y-2">
@@ -321,11 +343,11 @@ export default async function DashboardPage() {
                                     </div>
                                   </div>
                                 ))}
-              </div>
-            </div>
+                              </div>
+                            </div>
                           ) : (
                             <div className="mt-3 pt-3 border-t text-sm text-muted-foreground text-center">
-                              No statements available for this account
+                              {account.plaidAccounts.length > 0 ? "Transactions are synced automatically." : "No statements available for this account"}
                             </div>
                           )}
                         </div>
@@ -433,7 +455,7 @@ export default async function DashboardPage() {
                               <span>{statement.accounts[0].financialInstitution}</span>
                             </div>
                             <div className="flex items-center gap-1">
-                              {getAccountTypeIcon(statement.accounts[0].accountType)}
+                              {getAccountTypeIcon(statement.accounts[0].accountType, statement.accounts[0].plaidAccounts.length > 0)}
                               <span>{statement.accounts[0].name}</span>
                             </div>
                           </div>
