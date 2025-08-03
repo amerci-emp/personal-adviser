@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Check, Lock, ArrowRight } from "lucide-react";
 import { useSession } from "next-auth/react";
@@ -62,13 +62,24 @@ interface TasksViewProps {
 
 export function TasksView({ onBack, onNavigateToDashboard }: TasksViewProps) {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
   const { data: tasks, isLoading } = trpc.tasks.getAllTasks.useQuery();
   const { data: session } = useSession();
   const utils = trpc.useUtils();
   
-  // Get user score for status colors
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  
+  // Get user score for status colors only after mount
   const playerScore = session?.user?.points || 1500;
-  const statusColors = getStatusColors(playerScore);
+  const statusColors = isMounted ? getStatusColors(playerScore) : { 
+    bg: "bg-slate-500", 
+    text: "text-white", 
+    border: "border-slate-400",
+    buttonText: "text-slate-600"
+  };
 
   const handleStartTask = (taskId: string) => {
     switch (taskId) {

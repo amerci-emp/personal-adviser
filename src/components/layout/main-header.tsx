@@ -15,7 +15,7 @@ import { signOut, useSession } from "next-auth/react";
 import { Zap, LayoutDashboard, CheckSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlayerStatus } from "@/components/dashboard/player-status";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { QuestBoard } from "../dashboard/quest-board";
 import { MainHeaderSkeleton } from "./main-header-skeleton";
 
@@ -48,7 +48,13 @@ export function MainHeader({ currentView = "dashboard", onViewChange }: MainHead
   const { data: session, status } = useSession();
   const user = session?.user;
   const [isQuestBoardOpen, setIsQuestBoardOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
   const pathname = usePathname();
+
+  // Prevent hydration mismatch by only applying colors after mount
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   if (status === "loading") {
     return <MainHeaderSkeleton />;
@@ -61,8 +67,8 @@ export function MainHeader({ currentView = "dashboard", onViewChange }: MainHead
     avatarUrl: user?.image || undefined,
   };
 
-  // Get status-based tab colors
-  const activeTabColors = getStatusTabColors(player.score);
+  // Get status-based tab colors only after client mount
+  const activeTabColors = isMounted ? getStatusTabColors(player.score) : "bg-slate-100 text-slate-700";
 
   const quests = [
     {

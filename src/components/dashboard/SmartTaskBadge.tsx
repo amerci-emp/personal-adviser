@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { useSession } from "next-auth/react";
@@ -55,10 +56,16 @@ const getStatusColors = (score: number) => {
 export function SmartTaskBadge({ onNavigateToTasks }: SmartTaskBadgeProps) {
   const { data: task, isLoading, error } = trpc.tasks.getHighestPriorityTask.useQuery();
   const { data: session } = useSession();
+  const [isMounted, setIsMounted] = useState(false);
   
-  // Get user score for status colors
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  
+  // Get user score for status colors only after mount
   const playerScore = session?.user?.points || 1500;
-  const colors = getStatusColors(playerScore);
+  const colors = isMounted ? getStatusColors(playerScore) : { bg: "bg-slate-500", text: "text-white" };
 
   // Debug logging
   console.log('SmartTaskBadge Debug:', { task, isLoading, error, playerScore });
