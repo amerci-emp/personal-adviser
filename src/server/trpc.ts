@@ -2,7 +2,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { getServerSession } from "next-auth";
 import superjson from "superjson";
 import { ZodError } from "zod";
-import { PrismaClient } from "@/generated/prisma";
+import { PrismaClient } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 
 /**

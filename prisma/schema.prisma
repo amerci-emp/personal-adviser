@@ -1,6 +1,5 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -9,30 +8,33 @@ datasource db {
 }
 
 model User {
-  id                         String                      @id @default(cuid())
-  name                       String?
-  email                      String?                     @unique
-  emailVerified              DateTime?
-  image                      String?
-  password                   String?
-  connectionType             ConnectionType?
-  createdAt                  DateTime                    @default(now())
-  updatedAt                  DateTime                    @default(now()) @updatedAt
-  accounts                   Account[]
-  bankAccounts               BankAccount[]
-  categories                 Category[]
-  categoryPreferences        CategoryPreferences?
-  personalFinanceSpreadsheet PersonalFinanceSpreadsheet?
-  PointActivity              PointActivity[]
-  ReviewSession              ReviewSession[]
-  sessions                   Session[]
-  statements                 Statement[]
-  UserAccuracyMetrics        UserAccuracyMetrics?
-  UserAchievement            UserAchievement[]
-  UserMerchantConflict       UserMerchantConflict[]
-  UserMerchantPattern        UserMerchantPattern[]
-  UserPoints                 UserPoints?
-  plaidItems                 PlaidItem[]
+  id             String        @id @default(cuid())
+  name           String?
+  email          String?       @unique
+  emailVerified  DateTime?
+  image          String?
+  password       String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  aiProfile      Json?
+  isAiEnabled    Boolean?      @default(false)
+  connectionType String?
+  accounts       Account[]
+  bankAccounts   BankAccount[]
+  sessions       Session[]
+  statements     Statement[]
+  transactions   Transaction[]
+  userPoints     UserPoints?
+  userTasks      UserTask[]
+}
+
+model UserPoints {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  totalPoints Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Account {
@@ -49,11 +51,10 @@ model Account {
   id_token          String?
   session_state     String?
   createdAt         DateTime @default(now())
-  updatedAt         DateTime @default(now()) @updatedAt
+  updatedAt         DateTime @updatedAt
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
-  @@index([userId])
 }
 
 model Session {
@@ -61,11 +62,7 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @default(now()) @updatedAt
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
 }
 
 model VerificationToken {
@@ -77,452 +74,95 @@ model VerificationToken {
 }
 
 model BankAccount {
-  id                   String      @id @default(cuid())
+  id                   String         @id @default(cuid())
   userId               String
   name                 String
   financialInstitution String
-  accountType          AccountType @default(OTHER)
   lastFourDigits       String?
-  balance              Decimal?    @db.Decimal(12, 2)
-  notes                String?
-  color                String?
-  institutionLogo      String?
-  createdAt            DateTime    @default(now())
-  updatedAt            DateTime    @default(now()) @updatedAt
-  user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  statements           Statement[] @relation("BankAccountToStatement")
+  balance              Decimal?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  accountType          String
+  user                 User           @relation(fields: [userId], references: [id])
   plaidAccounts        PlaidAccount[]
-
-  @@unique([userId, financialInstitution, lastFourDigits])
-  @@index([userId])
-  @@index([financialInstitution])
+  statements           Statement[]    @relation("StatementToBankAccount")
+  transactions         Transaction[]
+  AssociatedStatements Statement[]    @relation("AssociatedStatements")
 }
 
 model Statement {
-  id                 String          @id @default(cuid())
-  userId             String
-  filename           String
-  uploadTimestamp    DateTime        @default(now())
-  status             StatementStatus @default(UPLOADED)
-  processedTimestamp DateTime?
-  errorMessage       String?
-  storageUrl         String?
-  storageBucket      String?
-  storageFilePath    String?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @default(now()) @updatedAt
-  periodEnd          DateTime?
-  periodStart        DateTime?
-  exportAttempts     Int             @default(0)
-  exportError        String?
-  exportedAt         DateTime?
-  lastRetryAt        DateTime?
-  exportJobs         ExportJob[]
-  PointActivity      PointActivity[]
-  ReviewSession      ReviewSession[]
-  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions       Transaction[]
-  accounts           BankAccount[]   @relation("BankAccountToStatement")
-
-  @@index([userId])
-  @@index([status])
-  @@index([exportAttempts])
+  id              String        @id @default(cuid())
+  userId          String
+  filename        String
+  uploadTimestamp DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  periodEnd       DateTime?
+  periodStart     DateTime?
+  bankAccountId   String?
+  s3Key           String
+  status          String        @default("UPLOADED")
+  bankAccount     BankAccount?  @relation("StatementToBankAccount", fields: [bankAccountId], references: [id])
+  user            User          @relation(fields: [userId], references: [id])
+  transactions    Transaction[]
+  accounts        BankAccount[] @relation("AssociatedStatements")
 }
 
 model Transaction {
-  id               String        @id @default(cuid())
-  statementId      String
-  transactionDate  DateTime?
-  description      String
-  amount           Decimal       @db.Decimal(10, 2)
-  categoryId       String?
-  originalText     String?
-  needsReview      Boolean       @default(false)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @default(now()) @updatedAt
-  assignedCategory String?
-  cleanedMerchant  String?
-  communityScore   Decimal?      @db.Decimal(5, 2)
-  exported         Boolean       @default(false)
-  exportedAt       DateTime?
-  lastReviewedAt   DateTime?
-  monthlySheetId   String?
-  personalScore    Decimal?      @db.Decimal(5, 2)
-  reviewConfidence Decimal?      @db.Decimal(5, 2)
-  reviewCount      Int           @default(0)
-  reviewed         Boolean       @default(false)
-  category         Category?     @relation(fields: [categoryId], references: [id])
-  monthlySheet     MonthlySheet? @relation(fields: [monthlySheetId], references: [id])
-  statement        Statement     @relation(fields: [statementId], references: [id], onDelete: Cascade)
-  source           TransactionSource @default(MANUAL)
-  plaidTransactionId String?           @unique
-
-  @@index([statementId])
-  @@index([categoryId])
-  @@index([transactionDate])
-  @@index([exported])
-  @@index([monthlySheetId])
-  @@index([reviewConfidence])
-  @@index([reviewed])
-}
-
-model Category {
-  id           String        @id @default(cuid())
-  userId       String
-  name         String
-  description  String?
-  color        String?
-  icon         String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @default(now()) @updatedAt
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
-
-  @@unique([userId, name])
-  @@index([userId])
-}
-
-model GoogleSheetConfig {
-  id              String    @id @default(cuid())
-  userId          String    @unique
-  refreshToken    String?
-  accessToken     String?
-  tokenExpiry     DateTime?
-  spreadsheetId   String?
-  spreadsheetName String?
-  autoExport      Boolean   @default(false)
-  retentionPolicy String?
-  lastExported    DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @default(now()) @updatedAt
-
-  @@index([userId])
-}
-
-model PersonalFinanceSpreadsheet {
-  id              String         @id @default(cuid())
-  userId          String         @unique
-  spreadsheetId   String
-  spreadsheetName String         @default("Personal Finance")
-  spreadsheetUrl  String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @default(now()) @updatedAt
-  monthlySheets   MonthlySheet[]
-  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([spreadsheetId])
-}
-
-model MonthlySheet {
-  id                     String                     @id @default(cuid())
-  personalFinanceSheetId String
-  sheetId                Int
-  sheetName              String
-  monthKey               String
-  year                   Int
-  month                  Int
-  transactionCount       Int                        @default(0)
-  lastUpdated            DateTime                   @default(now())
-  createdAt              DateTime                   @default(now())
-  updatedAt              DateTime                   @default(now()) @updatedAt
-  personalFinanceSheet   PersonalFinanceSpreadsheet @relation(fields: [personalFinanceSheetId], references: [id], onDelete: Cascade)
-  transactions           Transaction[]
-
-  @@unique([personalFinanceSheetId, monthKey])
-  @@index([monthKey])
-  @@index([year, month])
-  @@index([personalFinanceSheetId])
-}
-
-model ExportJob {
-  id                    String          @id @default(cuid())
-  statementId           String
-  userId                String
-  status                ExportJobStatus @default(PENDING)
-  attempts              Int             @default(0)
-  maxAttempts           Int             @default(3)
-  nextRetryAt           DateTime?
-  totalTransactions     Int             @default(0)
-  processedTransactions Int             @default(0)
-  failedTransactions    Int             @default(0)
-  errorMessage          String?
-  errorDetails          String?
-  startedAt             DateTime?
-  completedAt           DateTime?
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @default(now()) @updatedAt
-  statement             Statement       @relation(fields: [statementId], references: [id], onDelete: Cascade)
-
-  @@index([status])
-  @@index([nextRetryAt])
-  @@index([statementId])
-  @@index([userId])
-}
-
-model CategoryPreferences {
-  id              String          @id @default(cuid())
-  userId          String          @unique
-  userType        UserType?
-  version         Int             @default(1)
-  effectiveDate   DateTime        @default(now())
-  migrationPolicy MigrationPolicy @default(NEW_SHEETS_ONLY)
-  lastMigrationAt DateTime?
-  backupCreated   Boolean         @default(false)
-  categoryConfig  Json
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @default(now()) @updatedAt
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([effectiveDate])
-}
-
-model CommunityMerchantIntelligence {
-  id                        String   @id
-  merchantPatternHash       String
-  category                  String
-  locationRegionHash        String?
-  confidenceScore           Decimal  @default(0.00) @db.Decimal(5, 2)
-  contributorAccuracyWeight Decimal  @default(0.50) @db.Decimal(3, 2)
-  voteCount                 Int      @default(0)
-  lastUpdated               DateTime @default(now())
-
-  @@unique([merchantPatternHash, category, locationRegionHash])
-  @@index([category])
-  @@index([confidenceScore])
-  @@index([merchantPatternHash])
-}
-
-model PointActivity {
-  id             String            @id
-  userId         String
-  activityType   PointActivityType
-  pointsEarned   Int
-  completionRate Decimal?          @db.Decimal(3, 2)
-  description    String?
-  statementId    String?
-  createdAt      DateTime          @default(now())
-  Statement      Statement?        @relation(fields: [statementId], references: [id])
-  User           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([activityType])
-  @@index([createdAt])
-  @@index([userId])
-}
-
-model ReviewSession {
-  id                      String              @id
-  statementId             String
-  userId                  String
-  totalTransactions       Int
-  reviewedCount           Int                 @default(0)
-  currentTransactionIndex Int                 @default(0)
-  sessionData             Json?
-  status                  ReviewSessionStatus @default(IN_PROGRESS)
-  expiresAt               DateTime            @default(dbgenerated("(CURRENT_TIMESTAMP + '1 year'::interval)"))
-  createdAt               DateTime            @default(now())
-  updatedAt               DateTime            @default(now())
-  Statement               Statement           @relation(fields: [statementId], references: [id], onDelete: Cascade)
-  User                    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([expiresAt])
-  @@index([statementId])
-  @@index([status])
-  @@index([userId])
-}
-
-model UserAccuracyMetrics {
-  id                       String   @id
-  userId                   String   @unique
-  overallAccuracy          Decimal  @default(0.00) @db.Decimal(3, 2)
-  totalReviews             Int      @default(0)
-  consistencyScore         Decimal  @default(1.00) @db.Decimal(3, 2)
-  communityInfluenceWeight Decimal  @default(0.50) @db.Decimal(3, 2)
-  lastCalculatedAt         DateTime @default(now())
-  User                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([communityInfluenceWeight])
-  @@index([overallAccuracy])
-  @@index([userId])
-}
-
-model UserAchievement {
-  id             String   @id
-  userId         String
-  achievementKey String
-  unlockedAt     DateTime @default(now())
-  User           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, achievementKey])
-  @@index([achievementKey])
-  @@index([userId])
-}
-
-model UserMerchantConflict {
-  id                String   @id
-  userId            String
-  merchantHash      String
-  hourContext       String?
-  dayContext        String?
-  previousCategory  String
-  newCategory       String
-  userChoice        String
-  transactionAmount Decimal? @db.Decimal(10, 2)
-  resolvedAt        DateTime @default(now())
-  createdAt         DateTime @default(now())
-  User              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([merchantHash])
-  @@index([resolvedAt])
-  @@index([userId])
-}
-
-model UserMerchantPattern {
-  id               String   @id
-  userId           String
-  merchantHash     String
-  category         String
-  hourContext      String?
-  dayContext       String?
-  confidenceScore  Decimal  @default(0.00) @db.Decimal(5, 2)
-  reviewCount      Int      @default(0)
-  lastReviewedAt   DateTime @default(now())
-  consistencyScore Decimal  @default(1.00) @db.Decimal(3, 2)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @default(now())
-  User             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, merchantHash, hourContext, dayContext])
-  @@index([confidenceScore])
-  @@index([dayContext])
-  @@index([hourContext])
-  @@index([merchantHash])
-  @@index([userId])
-}
-
-model UserPoints {
-  id                          String   @id
-  userId                      String   @unique
-  totalPoints                 Int      @default(0)
-  monthlyReviewPoints         Int      @default(0)
-  accuracyBonusPoints         Int      @default(0)
-  communityContributionPoints Int      @default(0)
-  currentMonthCompletionRate  Decimal  @default(0.00) @db.Decimal(3, 2)
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @default(now())
-  User                        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([totalPoints])
-  @@index([userId])
-}
-
-enum AccountType {
-  CHECKING
-  SAVINGS
-  CREDIT
-  INVESTMENT
-  OTHER
-}
-
-enum StatementStatus {
-  UPLOADED
-  PROCESSING
-  REVIEW_NEEDED
-  COMPLETED
-  FAILED
-  EXPORT_QUEUED
-  EXPORTING
-  EXPORT_RETRYING
-}
-
-enum ExportJobStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-enum UserType {
-  STUDENT
-  YOUNG_PROFESSIONAL
-  HOMEOWNER
-  RENTER
-  RETIREE
-  CUSTOM
-}
-
-enum MigrationPolicy {
-  NEW_SHEETS_ONLY
-  MIGRATE_ALL
-  ASK_EACH_TIME
-}
-
-enum PointActivityType {
-  MONTHLY_REVIEW
-  AI_TRAINING
-  ACCURACY_BONUS
-  COMMUNITY_CONTRIBUTION
-}
-
-enum ReviewSessionStatus {
-  IN_PROGRESS
-  COMPLETED
-  ABANDONED
-}
-
-enum ConnectionType {
-  PLAID
-  MANUAL
-}
-
-enum PlaidSyncStatus {
-  ACTIVE
-  ITEM_LOGIN_REQUIRED
-  PENDING_EXPIRATION
-  ITEM_ERROR
-}
-
-enum TransactionSource {
-  MANUAL
-  PLAID
-}
-
-model PlaidItem {
-  id              String          @id @default(cuid())
-  userId          String
-  itemId          String          @unique
-  accessToken     String          @db.Text
-  institutionId   String
-  institutionName String
-  cursor          String?
-  isActive        Boolean         @default(true)
-  lastSync        DateTime?
-  syncStatus      PlaidSyncStatus @default(ACTIVE)
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plaidAccounts   PlaidAccount[]
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-
-  @@index([userId])
+  id            String      @id @default(cuid())
+  statementId   String?
+  description   String
+  amount        Decimal
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  bankAccountId String
+  category      String
+  date          DateTime
+  isRecurring   Boolean     @default(false)
+  userId        String
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id])
+  statement     Statement?  @relation(fields: [statementId], references: [id])
+  user          User        @relation(fields: [userId], references: [id])
 }
 
 model PlaidAccount {
-  id            String       @id @default(cuid())
-  plaidItemId   String
-  accountId     String
-  bankAccountId String?
-  name          String
-  officialName  String?
-  mask          String?
-  type          String
-  subtype       String?
-  plaidItem     PlaidItem    @relation(fields: [plaidItemId], references: [id], onDelete: Cascade)
-  bankAccount   BankAccount? @relation(fields: [bankAccountId], references: [id])
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id            String      @id @default(cuid())
+  bankAccountId String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  plaidId       String      @unique
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+}
 
-  @@unique([plaidItemId, accountId])
-  @@index([plaidItemId])
+model Task {
+  id          TaskId     @id
+  title       String
+  description String
+  points      Int
+  priority    Int
+  userTasks   UserTask[]
+}
+
+model UserTask {
+  id        String         @id @default(cuid())
+  userId    String
+  taskId    TaskId
+  status    UserTaskStatus @default(PENDING)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  task      Task           @relation(fields: [taskId], references: [id])
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, taskId])
+}
+
+enum TaskId {
+  CONNECT_ACCOUNT
+  REVIEW_TRANSACTIONS
+  ENABLE_AI_COMPANION
+}
+
+enum UserTaskStatus {
+  PENDING
+  COMPLETED
 }

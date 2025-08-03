@@ -3,8 +3,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { TRPCError } from "@trpc/server";
 import { processUploadedFile } from "@/lib/file-processing";
 import { extractAccountInfo, extractStatementPeriod } from "@/lib/account-extractor";
-import { ExportService } from "@/lib/export-service";
-import { GoogleSheetsCredentials } from "@/lib/google-sheets";
+// Google Sheets functionality removed
 
 // Use string constants for the enum
 const StatementStatus = {
@@ -308,83 +307,8 @@ export const statementRouter = createTRPCRouter({
               },
             });
 
-            // Auto-export to Google Sheets if user has Google credentials
-            try {
-              console.log('Starting auto-export to Google Sheets...');
-              
-              // Get user's Google credentials
-              const googleAccount = await ctx.prisma.account.findFirst({
-                where: {
-                  userId: ctx.session.user.id,
-                  provider: 'google',
-                },
-              });
-
-              if (googleAccount && googleAccount.access_token) {
-                // Check if user has Google Sheets permission
-                const hasSheetPermission = googleAccount.scope?.includes('https://www.googleapis.com/auth/spreadsheets');
-                
-                if (hasSheetPermission) {
-                  const credentials: GoogleSheetsCredentials = {
-                    access_token: googleAccount.access_token,
-                    refresh_token: googleAccount.refresh_token || undefined,
-                    expires_at: googleAccount.expires_at || undefined,
-                  };
-
-                  // Create export service and export transactions
-                  const exportService = new ExportService(ctx.session.user.id, credentials);
-                  const exportResult = await exportService.exportTransactionsFromProcessedData(
-                    statement.id,
-                    processingResult.data
-                  );
-
-                  if (exportResult.success) {
-                    console.log(`Successfully exported ${exportResult.exportedCount} transactions to ${exportResult.monthlySheets.length} monthly sheets`);
-                    
-                    // Update statement with export success
-                    await ctx.prisma.statement.update({
-                      where: { id: statement.id },
-                      data: {
-                        exportedAt: new Date(),
-                        status: StatementStatus.COMPLETED,
-                      },
-                    });
-                  } else {
-                    console.error('Export failed:', exportResult.errors);
-                    // Don't fail the whole process, just log the export failure
-                    await ctx.prisma.statement.update({
-                      where: { id: statement.id },
-                      data: {
-                        exportError: exportResult.errors.join('; '),
-                        exportAttempts: 1,
-                      },
-                    });
-                  }
-                } else {
-                  console.log('User does not have Google Sheets permission, skipping auto-export');
-                }
-              } else {
-                console.log('No Google credentials found, skipping auto-export');
-              }
-            } catch (exportError) {
-              const errorMessage = exportError instanceof Error ? exportError.message : String(exportError);
-              console.error('Auto-export failed:', errorMessage);
-              
-              // Check if it's a refresh token error
-              const isRefreshTokenError = errorMessage.includes('refresh token') || errorMessage.includes('No refresh token');
-              const userFriendlyError = isRefreshTokenError 
-                ? 'Google Sheets export failed: Please sign out and sign back in with Google to grant offline access.'
-                : errorMessage;
-              
-              // Don't fail the whole statement processing, just log the export error
-              await ctx.prisma.statement.update({
-                where: { id: statement.id },
-                data: {
-                  exportError: userFriendlyError,
-                  exportAttempts: 1,
-                },
-              });
-            }
+            // Google Sheets export functionality removed
+            console.log('Statement processing completed (Google Sheets export disabled)');
 
             console.log(`Statement ${statement.id} processed successfully with ${accountIdsToConnect.length} accounts`);
           } catch (error) {
@@ -535,83 +459,8 @@ export const statementRouter = createTRPCRouter({
           }
         }
 
-        // Auto-export to Google Sheets if user has Google credentials
-        try {
-          console.log('Starting auto-export to Google Sheets...');
-          
-          // Get user's Google credentials
-          const googleAccount = await ctx.prisma.account.findFirst({
-            where: {
-              userId: ctx.session.user.id,
-              provider: 'google',
-            },
-          });
-
-          if (googleAccount && googleAccount.access_token) {
-            // Check if user has Google Sheets permission
-            const hasSheetPermission = googleAccount.scope?.includes('https://www.googleapis.com/auth/spreadsheets');
-            
-            if (hasSheetPermission) {
-              const credentials: GoogleSheetsCredentials = {
-                access_token: googleAccount.access_token,
-                refresh_token: googleAccount.refresh_token || undefined,
-                expires_at: googleAccount.expires_at || undefined,
-              };
-
-              // Create export service and export transactions
-              const exportService = new ExportService(ctx.session.user.id, credentials);
-              const exportResult = await exportService.exportTransactionsFromProcessedData(
-                statement.id,
-                processingResult.data
-              );
-
-              if (exportResult.success) {
-                console.log(`Successfully exported ${exportResult.exportedCount} transactions to ${exportResult.monthlySheets.length} monthly sheets`);
-                
-                // Update statement with export success
-                await ctx.prisma.statement.update({
-                  where: { id: statement.id },
-                  data: {
-                    exportedAt: new Date(),
-                    status: StatementStatus.COMPLETED,
-                  },
-                });
-              } else {
-                console.error('Export failed:', exportResult.errors);
-                // Don't fail the whole process, just log the export failure
-                await ctx.prisma.statement.update({
-                  where: { id: statement.id },
-                  data: {
-                    exportError: exportResult.errors.join('; '),
-                    exportAttempts: 1,
-                  },
-                });
-              }
-            } else {
-              console.log('User does not have Google Sheets permission, skipping auto-export');
-            }
-          } else {
-            console.log('No Google credentials found, skipping auto-export');
-          }
-        } catch (exportError) {
-          const errorMessage = exportError instanceof Error ? exportError.message : String(exportError);
-          console.error('Auto-export failed:', errorMessage);
-          
-          // Check if it's a refresh token error
-          const isRefreshTokenError = errorMessage.includes('refresh token') || errorMessage.includes('No refresh token');
-          const userFriendlyError = isRefreshTokenError 
-            ? 'Google Sheets export failed: Please sign out and sign back in with Google to grant offline access.'
-            : errorMessage;
-          
-          // Don't fail the whole statement processing, just log the export error
-          await ctx.prisma.statement.update({
-            where: { id: statement.id },
-            data: {
-              exportError: userFriendlyError,
-              exportAttempts: 1,
-            },
-          });
-        }
+        // Google Sheets export functionality removed
+        console.log('Statement processing completed (Google Sheets export disabled)');
         
         return {
           success: true,

@@ -1,19 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Form,
@@ -23,8 +16,17 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Separator } from "@/components/ui/separator";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Coins,
+  TrendingUp,
+  Zap,
+  Sparkles,
+  DollarSign,
+  PiggyBank,
+  Rocket,
+  Star,
+} from "lucide-react";
+import { motion } from "framer-motion";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address" }),
@@ -50,11 +52,22 @@ const signupSchema = z
 type LoginFormValues = z.infer<typeof loginSchema>;
 type SignupFormValues = z.infer<typeof signupSchema>;
 
+const floatingIcons = [
+  { icon: Coins, color: "text-emerald-500", delay: 0 },
+  { icon: TrendingUp, color: "text-green-500", delay: 0.5 },
+  { icon: DollarSign, color: "text-teal-500", delay: 1 },
+  { icon: PiggyBank, color: "text-slate-500", delay: 1.5 },
+  { icon: Rocket, color: "text-emerald-600", delay: 2 },
+  { icon: Star, color: "text-green-400", delay: 2.5 },
+];
+
 export function AuthForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showEmailAuth, setShowEmailAuth] = useState(false);
-  const [emailAuthMode, setEmailAuthMode] = useState<"login" | "signup">("login");
+  const [emailAuthMode, setEmailAuthMode] = useState<"login" | "signup">(
+    "login"
+  );
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
@@ -141,7 +154,6 @@ export function AuthForm() {
         return;
       }
 
-      // Auto sign in after successful registration
       const result = await signIn("credentials", {
         email: data.email,
         password: data.password,
@@ -164,233 +176,356 @@ export function AuthForm() {
   }
 
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader className="text-center">
-        <CardTitle className="text-2xl">
-          Personal Financial Adviser
-        </CardTitle>
-        <CardDescription>
-          Get started by signing in with your Google account
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {error && (
-          <div className="bg-red-50 text-red-500 p-3 rounded-md text-sm">
-            {error}
-          </div>
-        )}
-
-        {/* Primary Google Sign-In */}
-        <div className="space-y-3">
-          <Button
-            type="button"
-            className="w-full h-12 text-base font-medium"
-            onClick={onGoogleSignIn}
-            disabled={isGoogleLoading || isLoading}
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50 to-emerald-100 flex items-center justify-center p-4 overflow-hidden relative">
+      <div className="absolute inset-0 overflow-hidden">
+        {floatingIcons.map((item, index) => (
+          <motion.div
+            key={index}
+            className={`absolute ${item.color}`}
+            initial={{
+              x: Math.random() * window.innerWidth,
+              y: Math.random() * window.innerHeight,
+              scale: 0,
+              rotate: 0,
+            }}
+            animate={{
+              y: [null, -20, 0],
+              scale: [0, 1, 0.8, 1],
+              rotate: [0, 360],
+            }}
+            transition={{
+              duration: 4,
+              delay: item.delay,
+              repeat: Infinity,
+              repeatType: "reverse",
+              ease: "easeInOut",
+            }}
           >
-            {isGoogleLoading ? (
-              "Signing in..."
-            ) : (
-              <>
-                <svg className="mr-3 h-5 w-5" viewBox="0 0 24 24">
-                  <path
-                    fill="currentColor"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  />
-                </svg>
-                Continue with Google
-              </>
-            )}
-          </Button>
-          
-          <p className="text-xs text-center text-muted-foreground">
-            Recommended • Fast & secure • One-click access
-          </p>
-        </div>
+            <item.icon size={24} />
+          </motion.div>
+        ))}
+      </div>
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0, y: 50 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{
+          type: "spring",
+          stiffness: 260,
+          damping: 20,
+          delay: 0.2,
+        }}
+        className="relative z-10"
+      >
+        <div className="w-full max-w-md bg-white/95 backdrop-blur-sm shadow-2xl border-0 overflow-hidden rounded-2xl">
+          <div className="p-8">
+            <motion.div
+              className="text-center mb-8"
+              initial={{ y: -20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.4 }}
+            >
+              <motion.div
+                className="flex justify-center mb-4"
+                animate={{ rotate: [0, 5, -5, 0] }}
+                transition={{ duration: 3, repeat: Infinity, repeatDelay: 4 }}
+              >
+                <div className="bg-gradient-to-r from-green-500 to-emerald-500 p-4 rounded-full relative">
+                  <div className="absolute inset-0 bg-gradient-to-r from-red-500/20 to-emerald-500/20 rounded-full animate-pulse"></div>
+                  <div className="relative flex items-center justify-center">
+                    <Zap className="w-6 h-6 text-white mr-1" />
+                    <span className="text-white font-bold text-sm">QAI</span>
+                  </div>
+                </div>
+              </motion.div>
 
-        {/* Collapsible Email Authentication */}
-        <div className="space-y-4">
-          <div className="relative">
-            <Separator />
-            <div className="absolute inset-0 flex items-center justify-center">
+              <motion.p
+                className="text-slate-600 text-lg font-medium"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.6 }}
+              >
+                Finance is fun. You just gotta level up! 🚀
+              </motion.p>
+            </motion.div>
+
+            <motion.div
+              className="mb-6 text-center"
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.8 }}
+            >
+              <div className="bg-gradient-to-r from-slate-100 to-green-50 p-4 rounded-xl border border-green-200">
+                <h3 className="text-xl font-bold text-slate-800 mb-2">
+                  Ready to Level Up?
+                </h3>
+                <p className="text-slate-600 text-sm">
+                  Transform your financial journey with AI-powered insights that
+                  make every decision count.
+                </p>
+              </div>
+            </motion.div>
+            {error && (
+              <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm mb-6">
+                {error}
+              </div>
+            )}
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 1.4 }}
+            >
               <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="bg-background px-3 text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setShowEmailAuth(!showEmailAuth)}
+                onClick={onGoogleSignIn}
+                className="w-full bg-gradient-to-r from-slate-700 to-green-600 hover:from-slate-800 hover:to-green-700 text-white font-bold py-4 text-lg rounded-xl shadow-lg transform transition-all duration-200 hover:scale-105 hover:shadow-xl border border-green-500"
                 disabled={isGoogleLoading || isLoading}
               >
-                {showEmailAuth ? (
-                  <>
-                    Hide email options
-                    <ChevronUp className="ml-1 h-3 w-3" />
-                  </>
-                ) : (
-                  <>
-                    Sign in with email instead
-                    <ChevronDown className="ml-1 h-3 w-3" />
-                  </>
-                )}
+                <motion.div
+                  className="flex items-center justify-center gap-2"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24">
+                    <path
+                      fill="currentColor"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="currentColor"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="currentColor"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                    />
+                    <path
+                      fill="currentColor"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                    />
+                  </svg>
+                  {isGoogleLoading
+                    ? "Leveling up..."
+                    : "Continue with Google"}
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      ease: "linear",
+                    }}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                  </motion.div>
+                </motion.div>
               </Button>
-            </div>
-          </div>
+            </motion.div>
 
-          {showEmailAuth && (
-            <div className="space-y-4 pt-2">
-              {/* Email Auth Mode Toggle */}
-              <div className="flex rounded-md border">
-                <Button
-                  type="button"
-                  variant={emailAuthMode === "login" ? "default" : "ghost"}
-                  size="sm"
-                  className="flex-1 rounded-r-none"
-                  onClick={() => setEmailAuthMode("login")}
-                >
-                  Login
-                </Button>
-                <Button
-                  type="button"
-                  variant={emailAuthMode === "signup" ? "default" : "ghost"}
-                  size="sm"
-                  className="flex-1 rounded-l-none"
-                  onClick={() => setEmailAuthMode("signup")}
-                >
-                  Sign Up
-                </Button>
+            <motion.div
+              className="mt-6 text-center space-y-3"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.6 }}
+            >
+              <div className="flex items-center justify-center gap-2 text-sm text-green-600">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="font-medium">
+                  Your data stays secure & private
+                </span>
               </div>
 
-              {/* Login Form */}
-              {emailAuthMode === "login" && (
-                <Form {...loginForm}>
-                  <form
-                    onSubmit={loginForm.handleSubmit(onLoginSubmit)}
-                    className="space-y-3"
-                  >
-                    <FormField
-                      control={loginForm.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm">Email</FormLabel>
-                          <FormControl>
-                            <Input placeholder="name@example.com" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={loginForm.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm">Password</FormLabel>
-                          <FormControl>
-                            <Input type="password" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <Button 
-                      type="submit" 
-                      className="w-full" 
-                      size="sm"
-                      disabled={isLoading || isGoogleLoading}
-                    >
-                      {isLoading ? "Signing in..." : "Sign In"}
-                    </Button>
-                  </form>
-                </Form>
-              )}
+              <button
+                className="text-purple-600 hover:text-purple-700 font-medium text-sm underline underline-offset-2 transition-colors"
+                onClick={() => setShowEmailAuth(!showEmailAuth)}
+              >
+                Use email instead →
+              </button>
+            </motion.div>
 
-              {/* Signup Form */}
-              {emailAuthMode === "signup" && (
-                <Form {...signupForm}>
-                  <form
-                    onSubmit={signupForm.handleSubmit(onSignupSubmit)}
-                    className="space-y-3"
+            {showEmailAuth && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="space-y-4 pt-4 border-t border-gray-200 mt-6"
+              >
+                <div className="flex rounded-xl bg-slate-100 p-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className={`flex-1 rounded-lg ${
+                      emailAuthMode === "login"
+                        ? "bg-gradient-to-r from-slate-700 to-green-600 text-white shadow"
+                        : "bg-transparent text-slate-600"
+                    }`}
+                    onClick={() => setEmailAuthMode("login")}
                   >
-                    <FormField
-                      control={signupForm.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm">Name</FormLabel>
-                          <FormControl>
-                            <Input placeholder="John Doe" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signupForm.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm">Email</FormLabel>
-                          <FormControl>
-                            <Input placeholder="name@example.com" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signupForm.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm">Password</FormLabel>
-                          <FormControl>
-                            <Input type="password" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signupForm.control}
-                      name="confirmPassword"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm">Confirm Password</FormLabel>
-                          <FormControl>
-                            <Input type="password" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <Button 
-                      type="submit" 
-                      className="w-full"
-                      size="sm"
-                      disabled={isLoading || isGoogleLoading}
+                    Login
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className={`flex-1 rounded-lg ${
+                      emailAuthMode === "signup"
+                        ? "bg-gradient-to-r from-slate-700 to-green-600 text-white shadow"
+                        : "bg-transparent text-slate-600"
+                    }`}
+                    onClick={() => setEmailAuthMode("signup")}
+                  >
+                    Sign Up
+                  </Button>
+                </div>
+                {emailAuthMode === "login" && (
+                  <Form {...loginForm}>
+                    <form
+                      onSubmit={loginForm.handleSubmit(onLoginSubmit)}
+                      className="space-y-3 text-left"
                     >
-                      {isLoading ? "Creating account..." : "Create Account"}
-                    </Button>
-                  </form>
-                </Form>
-              )}
-            </div>
-          )}
+                      <FormField
+                        control={loginForm.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm font-medium text-slate-600">
+                              Email
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="name@example.com"
+                                {...field}
+                                className="bg-white/50 border-green-200 focus:border-green-400 focus:ring-green-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={loginForm.control}
+                        name="password"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm font-medium text-slate-600">
+                              Password
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type="password"
+                                {...field}
+                                className="bg-white/50 border-green-200 focus:border-green-400 focus:ring-green-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type="submit"
+                        className="w-full bg-gradient-to-r from-slate-700 to-green-600 hover:from-slate-800 hover:to-green-700 text-white font-bold py-3 rounded-lg"
+                        disabled={isLoading || isGoogleLoading}
+                      >
+                        {isLoading ? "Signing in..." : "Sign In"}
+                      </Button>
+                    </form>
+                  </Form>
+                )}
+                {emailAuthMode === "signup" && (
+                  <Form {...signupForm}>
+                    <form
+                      onSubmit={signupForm.handleSubmit(onSignupSubmit)}
+                      className="space-y-3 text-left"
+                    >
+                      <FormField
+                        control={signupForm.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm font-medium text-slate-600">
+                              Name
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="John Doe"
+                                {...field}
+                                className="bg-white/50 border-green-200 focus:border-green-400 focus:ring-green-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={signupForm.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm font-medium text-slate-600">
+                              Email
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="name@example.com"
+                                {...field}
+                                className="bg-white/50 border-green-200 focus:border-green-400 focus:ring-green-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={signupForm.control}
+                        name="password"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm font-medium text-slate-600">
+                              Password
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type="password"
+                                {...field}
+                                className="bg-white/50 border-green-200 focus:border-green-400 focus:ring-green-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={signupForm.control}
+                        name="confirmPassword"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm font-medium text-slate-600">
+                              Confirm Password
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type="password"
+                                {...field}
+                                className="bg-white/50 border-green-200 focus:border-green-400 focus:ring-green-400"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type="submit"
+                        className="w-full bg-gradient-to-r from-slate-700 to-green-600 hover:from-slate-800 hover:to-green-700 text-white font-bold py-3 rounded-lg"
+                        disabled={isLoading || isGoogleLoading}
+                      >
+                        {isLoading
+                          ? "Creating account..."
+                          : "Create Account"}
+                      </Button>
+                    </form>
+                  </Form>
+                )}
+              </motion.div>
+            )}
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      </motion.div>
+    </div>
   );
 }

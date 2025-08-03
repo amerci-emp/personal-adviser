@@ -5,15 +5,17 @@ import { usePlaidLink } from 'react-plaid-link';
 import { useEffect } from 'react';
 
 interface PlaidLinkButtonProps {
-  onSuccess: (publicToken: string, institution: { name: string; id: string }) => void;
+  onSuccess?: (publicToken: string, institution: { name: string; id: string }) => void;
+  onComplete?: () => void; // For modal use - called after successful connection
 }
 
-export function PlaidLinkButton({ onSuccess }: PlaidLinkButtonProps) {
+export function PlaidLinkButton({ onSuccess, onComplete }: PlaidLinkButtonProps) {
   const { data: linkToken, error, isLoading } = trpc.plaid.createLinkToken.useQuery();
 
   const exchangeToken = trpc.plaid.exchangePublicToken.useMutation({
     onSuccess: () => {
-      // The parent component will handle the redirect on success
+      // Call onComplete for modal use cases
+      onComplete?.();
     },
     onError: (error) => {
       // TODO: Add proper user-facing error handling
@@ -24,15 +26,18 @@ export function PlaidLinkButton({ onSuccess }: PlaidLinkButtonProps) {
   const { open, ready } = usePlaidLink({
     token: linkToken || null,
     onSuccess: (publicToken, metadata) => {
-      onSuccess(publicToken, {
-        name: metadata.institution.name,
-        id: metadata.institution.institution_id,
-      });
-      exchangeToken.mutate({
-        publicToken,
-        institutionName: metadata.institution.name,
-        institutionId: metadata.institution.institution_id,
-      });
+      // Handle the case where metadata.institution might be null
+      if (metadata.institution) {
+        onSuccess?.(publicToken, {
+          name: metadata.institution.name,
+          id: metadata.institution.institution_id,
+        });
+        exchangeToken.mutate({
+          publicToken,
+          institutionName: metadata.institution.name,
+          institutionId: metadata.institution.institution_id,
+        });
+      }
     },
   });
   

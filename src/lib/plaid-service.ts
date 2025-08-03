@@ -46,11 +46,28 @@ export class PlaidService {
     return response.data;
   }
 
+  // Method for working with raw (non-encrypted) access tokens
+  async getAccountsRaw(rawAccessToken: string) {
+    const response = await this.client.accountsGet({
+      access_token: rawAccessToken,
+    });
+    return response.data;
+  }
+
   async syncTransactions(accessToken: string, cursor?: string | null) {
     const decryptedAccessToken = decrypt(accessToken);
     
     const response = await this.client.transactionsSync({
       access_token: decryptedAccessToken,
+      cursor: cursor || undefined,
+    });
+    return response.data;
+  }
+
+  // Method for working with raw (non-encrypted) access tokens
+  async syncTransactionsRaw(rawAccessToken: string, cursor?: string | null) {
+    const response = await this.client.transactionsSync({
+      access_token: rawAccessToken,
       cursor: cursor || undefined,
     });
     return response.data;

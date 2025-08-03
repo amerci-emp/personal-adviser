@@ -14,9 +14,25 @@ import path from 'path';
 type NormalizedTransactionInput = Omit<Prisma.TransactionCreateManyInput, 'statementId'>;
 
 
-function normalizePlaidTransaction(
+async function normalizePlaidTransaction(
   plaidTx: PlaidTransaction
-): NormalizedTransactionInput {
+): Promise<NormalizedTransactionInput> {
+  const plaidCategory = plaidTx.personal_finance_category?.primary || null;
+
+  // Define vague categories that should trigger a review
+  const vagueCategories = ['GENERAL_MERCHANDISE', 'GENERAL_SERVICES', 'GOVERNMENT_AND_NON_PROFIT', 'TRANSFER_OUT', 'TRANSFER_IN'];
+
+  let needsReview = false;
+  let assignedCategory = plaidCategory;
+
+  if (!plaidCategory || vagueCategories.includes(plaidCategory)) {
+    needsReview = true;
+    // Placeholder for AI categorization call
+    // In a future step, we will replace this with a call to an AI service
+    // For now, we'll just flag it for manual review.
+    console.log(`[Categorization] Transaction "${plaidTx.name}" needs review. Plaid category: ${plaidCategory}`);
+  }
+
   return {
     description: plaidTx.merchant_name || plaidTx.name,
     amount: plaidTx.amount,
@@ -24,9 +40,9 @@ function normalizePlaidTransaction(
     source: 'PLAID',
     plaidTransactionId: plaidTx.transaction_id,
     originalText: JSON.stringify(plaidTx), // Store original data for debugging
-    needsReview: false, // Plaid data is generally clean
+    needsReview: needsReview, 
     exported: false,
-    assignedCategory: plaidTx.personal_finance_category?.primary || null,
+    assignedCategory: assignedCategory,
     cleanedMerchant: plaidTx.merchant_name,
   };
 }
@@ -94,57 +110,43 @@ export class PlaidSyncService {
 
     // --- Process Added Transactions ---
     if (added.length > 0) {
-      const transactionsByMonth = added.reduce((acc, tx) => {
+      for (const tx of added) {
         const monthKey = tx.date.slice(0, 7); // YYYY-MM
-        if (!acc[monthKey]) {
-          acc[monthKey] = [];
-        }
-        acc[monthKey].push(tx);
-        return acc;
-      }, {} as Record<string, PlaidTransaction[]>);
-
-      for (const monthKey in transactionsByMonth) {
-        const transactionsForMonth = transactionsByMonth[monthKey];
         const year = parseInt(monthKey.split('-')[0]);
         const month = parseInt(monthKey.split('-')[1]);
-        
+
         const virtualStatementFilename = `Plaid Sync - ${item.institutionName} - ${monthKey}`;
 
         let statement = await prisma.statement.findFirst({
-            where: {
-                userId: item.userId,
-                filename: virtualStatementFilename,
-            }
+          where: {
+            userId: item.userId,
+            filename: virtualStatementFilename,
+          },
         });
 
         if (!statement) {
-            statement = await prisma.statement.create({
-                data: {
-                    userId: item.userId,
-                    filename: virtualStatementFilename,
-                    status: 'COMPLETED',
-                    periodStart: new Date(year, month - 1, 1),
-                    periodEnd: new Date(year, month, 0),
-                }
-            });
-            console.log(`[PlaidSyncService] Created virtual statement: ${statement.id} for ${monthKey}`);
+          statement = await prisma.statement.create({
+            data: {
+              userId: item.userId,
+              filename: virtualStatementFilename,
+              status: 'COMPLETED',
+              periodStart: new Date(year, month - 1, 1),
+              periodEnd: new Date(year, month, 0),
+            },
+          });
+          console.log(`[PlaidSyncService] Created virtual statement: ${statement.id} for ${monthKey}`);
         }
 
-        const newTransactions = transactionsForMonth.map(tx => {
-            const normalizedTx = normalizePlaidTransaction(tx);
-            return {
-                ...normalizedTx,
-                statementId: statement.id,
-            };
+        const normalizedTx = await normalizePlaidTransaction(tx);
+        
+        await prisma.transaction.create({
+          data: {
+            ...normalizedTx,
+            statementId: statement.id,
+          },
         });
-
-        const result = await prisma.transaction.createMany({
-            data: newTransactions,
-            skipDuplicates: true,
-        });
-
-        console.log(`[PlaidSyncService] Saved ${result.count} new transactions for item ${item.id} for month ${monthKey}.`);
       }
+      console.log(`[PlaidSyncService] Saved ${added.length} new transactions for item ${item.id}.`);
     }
     
     // TODO: Process Modified and Removed Transactions
