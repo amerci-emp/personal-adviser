@@ -12,23 +12,46 @@ type PlayerStatusProps = {
 };
 
 const getStatusColors = (score: number) => {
-  if (score >= 30000) {
+  // Clamp score between 0-40000 and calculate percentage
+  const clampedScore = Math.max(0, Math.min(40000, score));
+  const percentage = clampedScore / 40000;
+  
+  if (percentage <= 0.15) {
+    // 0-6k: Pure red (critical)
     return {
-      bg: "bg-gradient-to-tr from-green-400 to-emerald-600",
-      aura: "from-green-400 to-emerald-600",
+      bg: "bg-gradient-to-tr from-red-600 to-red-500",
+      aura: "from-red-600 to-red-500",
       text: "text-white",
     };
   }
-  if (score >= 15000) {
+  if (percentage <= 0.35) {
+    // 6k-14k: Red-orange (poor)
     return {
-      bg: "bg-gradient-to-tr from-yellow-400 to-amber-600",
-      aura: "from-yellow-400 to-amber-600",
+      bg: "bg-gradient-to-tr from-red-500 to-orange-500",
+      aura: "from-red-500 to-orange-500",
       text: "text-white",
     };
   }
+  if (percentage <= 0.55) {
+    // 14k-22k: Orange-yellow (improving)
+    return {
+      bg: "bg-gradient-to-tr from-orange-500 to-yellow-500",
+      aura: "from-orange-500 to-yellow-500",
+      text: "text-white",
+    };
+  }
+  if (percentage <= 0.75) {
+    // 22k-30k: Yellow-lime (good)
+    return {
+      bg: "bg-gradient-to-tr from-yellow-500 to-lime-500",
+      aura: "from-yellow-500 to-lime-500",
+      text: "text-white",
+    };
+  }
+  // 30k-40k: Lime-green (excellent)
   return {
-    bg: "bg-gradient-to-tr from-red-500 to-rose-700",
-    aura: "from-red-500 to-rose-700",
+    bg: "bg-gradient-to-tr from-lime-500 to-green-500",
+    aura: "from-lime-500 to-green-500",
     text: "text-white",
   };
 };

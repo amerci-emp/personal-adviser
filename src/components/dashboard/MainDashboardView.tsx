@@ -41,7 +41,7 @@ export function MainDashboardView() {
         {hasConnectedAccounts ? (
           <div className="space-y-4">
             {/* Total Balance */}
-            <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg p-4">
+            <div className="bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-white/80 text-sm">Total Balance</p>

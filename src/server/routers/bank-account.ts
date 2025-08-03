@@ -16,6 +16,16 @@ export const bankAccountRouter = createTRPCRouter({
       where: {
         userId: ctx.session.user.id,
       },
+      include: {
+        transactions: {
+          orderBy: {
+            date: "desc",
+          },
+          take: 10, // Get recent 10 transactions per account for dashboard
+        },
+        statements: true,
+        plaidAccounts: true,
+      },
       orderBy: {
         updatedAt: "desc",
       },

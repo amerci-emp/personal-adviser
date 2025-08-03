@@ -3,11 +3,57 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Check, Lock, ArrowRight } from "lucide-react";
+import { useSession } from "next-auth/react";
 
 import { trpc } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PlaidConnectionExpanded } from "../tasks/PlaidConnectionExpanded";
+
+// Status-based colors (same logic as other components)
+const getStatusColors = (score: number) => {
+  const clampedScore = Math.max(0, Math.min(40000, score));
+  const percentage = clampedScore / 40000;
+  
+  if (percentage <= 0.15) {
+    return {
+      bg: "bg-gradient-to-r from-red-600 to-red-500",
+      text: "text-white",
+      border: "border-red-400",
+      buttonText: "text-red-600",
+    };
+  }
+  if (percentage <= 0.35) {
+    return {
+      bg: "bg-gradient-to-r from-red-500 to-orange-500",
+      text: "text-white", 
+      border: "border-orange-400",
+      buttonText: "text-orange-600",
+    };
+  }
+  if (percentage <= 0.55) {
+    return {
+      bg: "bg-gradient-to-r from-orange-500 to-yellow-500",
+      text: "text-white",
+      border: "border-yellow-400",
+      buttonText: "text-yellow-600",
+    };
+  }
+  if (percentage <= 0.75) {
+    return {
+      bg: "bg-gradient-to-r from-yellow-500 to-lime-500",
+      text: "text-white",
+      border: "border-lime-400",
+      buttonText: "text-lime-600",
+    };
+  }
+  return {
+    bg: "bg-gradient-to-r from-lime-500 to-green-500",
+    text: "text-white",
+    border: "border-green-400",
+    buttonText: "text-green-600",
+  };
+};
 
 interface TasksViewProps {
   onBack: () => void;
@@ -17,7 +63,12 @@ interface TasksViewProps {
 export function TasksView({ onBack, onNavigateToDashboard }: TasksViewProps) {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const { data: tasks, isLoading } = trpc.tasks.getAllTasks.useQuery();
+  const { data: session } = useSession();
   const utils = trpc.useUtils();
+  
+  // Get user score for status colors
+  const playerScore = session?.user?.points || 1500;
+  const statusColors = getStatusColors(playerScore);
 
   const handleStartTask = (taskId: string) => {
     switch (taskId) {
@@ -102,8 +153,8 @@ export function TasksView({ onBack, onNavigateToDashboard }: TasksViewProps) {
                   task.status === "completed" && "bg-green-100/80 text-green-800",
                   task.status === "available" && !isHighestPriority && "bg-emerald-50/80",
                   task.status === "locked" && "bg-slate-100/80 text-slate-500",
-                  // Highest priority task gets badge-like styling
-                  isHighestPriority && "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg border-l-4 border-green-400"
+                  // Highest priority task gets status-based styling
+                  isHighestPriority && `${statusColors.bg} ${statusColors.text} shadow-lg border-l-4 ${statusColors.border}`
                 )}
               >
                 <div>
@@ -130,7 +181,7 @@ export function TasksView({ onBack, onNavigateToDashboard }: TasksViewProps) {
                       onClick={() => handleStartTask(task.id)}
                       className={cn(
                         isHighestPriority 
-                          ? "bg-white text-green-600 hover:bg-green-50 font-bold" 
+                          ? `bg-white hover:bg-white/90 font-bold ${statusColors.buttonText}`
                           : "bg-green-600 hover:bg-green-700 text-white"
                       )}
                     >

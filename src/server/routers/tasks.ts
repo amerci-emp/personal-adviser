@@ -75,6 +75,8 @@ export const tasksRouter = createTRPCRouter({
         bankAccounts: {
           include: {
             plaidAccounts: true,
+            statements: true,
+            transactions: true,
           },
         },
         userTasks: {
@@ -92,47 +94,51 @@ export const tasksRouter = createTRPCRouter({
       });
     }
 
-    // Check user's current progress
+    // Check user's current progress - SAME LOGIC AS getAllTasks
     const hasLinkedAccount = user.bankAccounts.some(bankAccount => 
       bankAccount.plaidAccounts.length > 0
     );
+    const hasStatementsAndTransactions = user.bankAccounts.some(bankAccount => 
+      bankAccount.statements.length > 0 && bankAccount.transactions.length > 0
+    );
+    const hasCompleteConnection = hasLinkedAccount && hasStatementsAndTransactions;
     const hasEnabledAi = user.isAiEnabled || false;
     
-    // For now, we'll assume they have categorized transactions if they have linked an account
-    // In a real implementation, you'd check for actual transaction categorization
-    const hasCategorizedTransactions = hasLinkedAccount;
+    // Check actual transaction categorization - SAME LOGIC AS getAllTasks
+    const totalTransactions = user.bankAccounts.reduce((sum, account) => 
+      sum + account.transactions.length, 0
+    );
+    const categorizedTransactions = user.bankAccounts.reduce((sum, account) => 
+      sum + account.transactions.filter(t => t.category && t.category !== 'uncategorized').length, 0
+    );
+    const hasCategorizedTransactions = totalTransactions > 0 && categorizedTransactions === totalTransactions;
 
-    // Find pending tasks for this user, ordered by priority
-    const pendingUserTasks = user.userTasks
-      .filter(userTask => userTask.status === 'PENDING')
-      .sort((a, b) => a.task.priority - b.task.priority);
+    // Get ALL tasks from master table and check their status - SAME LOGIC AS getAllTasks
+    const allTasks = await ctx.prisma.task.findMany({
+      orderBy: { priority: 'asc' },
+    });
 
-    // Find the highest priority task that the user is eligible for
-    for (const userTask of pendingUserTasks) {
-      const task = userTask.task;
-      
-      // Check eligibility based on task type
-      if (task.id === 'CONNECT_ACCOUNT' && !hasLinkedAccount) {
-        return {
-          id: task.id,
-          title: task.title,
-          description: task.description,
-          points: task.points,
-          priority: task.priority,
-        };
+    // Find the highest priority available task
+    for (const task of allTasks) {
+      const userTask = user.userTasks.find(ut => ut.taskId === task.id);
+      let status: "completed" | "available" | "locked" = "locked";
+
+      // Use the SAME status logic as getAllTasks
+      if (userTask?.status === 'COMPLETED') {
+        status = "completed";
+      } else {
+        // Check if task is available based on prerequisites
+        if (task.id === 'CONNECT_ACCOUNT') {
+          status = hasCompleteConnection ? "completed" : "available";
+        } else if (task.id === 'REVIEW_TRANSACTIONS') {
+          status = hasCompleteConnection ? (hasCategorizedTransactions ? "completed" : "available") : "locked";
+        } else if (task.id === 'ENABLE_AI_COMPANION') {
+          status = hasCompleteConnection && hasCategorizedTransactions ? (hasEnabledAi ? "completed" : "available") : "locked";
+        }
       }
-      
-      if (task.id === 'REVIEW_TRANSACTIONS' && hasLinkedAccount && !hasCategorizedTransactions) {
-        return {
-          id: task.id,
-          title: task.title,
-          description: task.description,
-          points: task.points,
-          priority: task.priority,
-        };
-      }
-      
-      if (task.id === 'ENABLE_AI_COMPANION' && hasLinkedAccount && hasCategorizedTransactions && !hasEnabledAi) {
+
+      // Return the first available task (highest priority)
+      if (status === "available") {
         return {
           id: task.id,
           title: task.title,

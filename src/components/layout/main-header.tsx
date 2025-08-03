@@ -19,6 +19,26 @@ import { useState } from "react";
 import { QuestBoard } from "../dashboard/quest-board";
 import { MainHeaderSkeleton } from "./main-header-skeleton";
 
+// Status-based colors (same logic as other components)
+const getStatusTabColors = (score: number) => {
+  const clampedScore = Math.max(0, Math.min(40000, score));
+  const percentage = clampedScore / 40000;
+  
+  if (percentage <= 0.15) {
+    return "bg-red-100 text-red-700";
+  }
+  if (percentage <= 0.35) {
+    return "bg-orange-100 text-orange-700";
+  }
+  if (percentage <= 0.55) {
+    return "bg-yellow-100 text-yellow-700";
+  }
+  if (percentage <= 0.75) {
+    return "bg-lime-100 text-lime-700";
+  }
+  return "bg-green-100 text-green-700";
+};
+
 interface MainHeaderProps {
   currentView?: string;
   onViewChange?: (view: string) => void;
@@ -36,10 +56,13 @@ export function MainHeader({ currentView = "dashboard", onViewChange }: MainHead
 
   const player = {
     level: user?.level || 1,
-    score: user?.points || 1000,
+    score: user?.points || 1500,
     name: user?.name || "Player",
     avatarUrl: user?.image || undefined,
   };
+
+  // Get status-based tab colors
+  const activeTabColors = getStatusTabColors(player.score);
 
   const quests = [
     {
@@ -83,7 +106,7 @@ export function MainHeader({ currentView = "dashboard", onViewChange }: MainHead
                 className={cn(
                   "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
                   currentView === "dashboard"
-                    ? "bg-green-100 text-green-700"
+                    ? activeTabColors
                     : "text-slate-600 hover:text-slate-800 hover:bg-slate-100"
                 )}
               >
@@ -96,7 +119,7 @@ export function MainHeader({ currentView = "dashboard", onViewChange }: MainHead
                 className={cn(
                   "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
                   currentView === "tasks"
-                    ? "bg-green-100 text-green-700"
+                    ? activeTabColors
                     : "text-slate-600 hover:text-slate-800 hover:bg-slate-100"
                 )}
               >
