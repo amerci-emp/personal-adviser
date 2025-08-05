@@ -1,6 +1,8 @@
 import { PlaidService } from './plaid-service';
 import { encrypt } from './encryption';
 import type { PrismaClient } from '@prisma/client';
+import { TransactionProcessor } from './transaction-processor';
+import { extractPlaidCategoryData, extractMerchantName, logPlaidExtractionDebug } from './plaid-data-extractor';
 
 export class PlaidImportService {
   private plaidService: PlaidService;
@@ -62,11 +64,20 @@ export class PlaidImportService {
       });
       console.log(`📄 Created statement record`);
 
-      // 5. Import transactions
+      // 5. Import transactions and collect for intelligence processing
       let importedCount = 0;
+      const createdTransactions: any[] = [];
+      
       for (const transaction of transactionsData.added) {
         try {
-          await prisma.transaction.create({
+          // Extract Plaid category and confidence data
+          const plaidData = extractPlaidCategoryData(transaction);
+          const merchantName = extractMerchantName(transaction);
+          
+          // Log extraction for debugging
+          logPlaidExtractionDebug(transaction, plaidData);
+          
+          const createdTransaction = await prisma.transaction.create({
             data: {
               statementId: statement.id,
               bankAccountId,
@@ -74,45 +85,56 @@ export class PlaidImportService {
               description: transaction.name,
               amount: Math.abs(transaction.amount), // Plaid uses negative for outflows
               date: new Date(transaction.date),
-              category: 'uncategorized', // Default category
+              category: 'uncategorized', // Will be updated by intelligence pipeline
+              // Intelligence fields - will be set by TransactionProcessor
+              needsReview: true, // Default to review until processed
+              source: 'PLAID',
+              plaidTransactionId: transaction.transaction_id,
+              direction: transaction.amount < 0 ? 'OUTFLOW' : 'INFLOW',
+              originalText: JSON.stringify(transaction), // Store raw Plaid data for debugging
+              merchantName: merchantName,
             },
           });
+          
+          // Store the extracted Plaid data on the transaction object for pattern processing
+          (createdTransaction as any).plaidCategory = plaidData.category;
+          (createdTransaction as any).plaidConfidence = plaidData.confidence;
+          
+          createdTransactions.push(createdTransaction);
           importedCount++;
         } catch (error) {
           console.error(`Failed to import transaction: ${transaction.name}`, error);
         }
       }
 
-      // 6. If no transactions were imported, add some demo transactions for immediate satisfaction
+      // 6. If no transactions were imported, just log it
       if (importedCount === 0) {
-        console.log('🎯 Adding demo transactions for immediate user satisfaction...');
-        const demoTransactions = [
-          { description: 'Starbucks Coffee', amount: 4.85, daysAgo: 1 },
-          { description: 'Grocery Store', amount: 127.34, daysAgo: 2 },
-          { description: 'Gas Station', amount: 52.10, daysAgo: 3 },
-          { description: 'Amazon Purchase', amount: 89.99, daysAgo: 5 },
-          { description: 'Restaurant Dinner', amount: 65.43, daysAgo: 7 },
-        ];
+        console.log('ℹ️ No transactions found from Plaid for this account. This is normal for new accounts or accounts with no recent activity.');
+      }
 
-        for (const demo of demoTransactions) {
-          try {
-            await prisma.transaction.create({
-              data: {
-                statementId: statement.id,
-                bankAccountId,
-                userId,
-                description: `${demo.description} (Demo)`,
-                amount: demo.amount,
-                date: new Date(Date.now() - demo.daysAgo * 24 * 60 * 60 * 1000),
-                category: 'uncategorized',
-              },
-            });
-            importedCount++;
-          } catch (error) {
-            console.error(`Failed to create demo transaction: ${demo.description}`, error);
-          }
-        }
-        console.log(`✨ Added ${demoTransactions.length} demo transactions`);
+      // 7. Process transactions through intelligence pipeline
+      if (createdTransactions.length > 0) {
+        console.log(`🧠 Running intelligence pipeline on ${createdTransactions.length} transactions...`);
+        
+        // Convert to TransactionLike format expected by processor, including Plaid data
+        const transactionsForProcessing = createdTransactions.map(t => ({
+          id: t.id,
+          description: t.description,
+          merchantName: t.merchantName,
+          amount: t.amount,
+          userId: t.userId,
+          // Include extracted Plaid data for pattern creation
+          plaidCategory: (t as any).plaidCategory,
+          plaidConfidence: (t as any).plaidConfidence
+        }));
+
+        // Run the intelligence pipeline
+        const processingStats = await TransactionProcessor.processNewTransactions(
+          transactionsForProcessing,
+          userId
+        );
+
+        console.log(`🎉 Intelligence processing complete:`, processingStats);
       }
 
       console.log(`✅ Import complete: ${importedCount} transactions imported`);

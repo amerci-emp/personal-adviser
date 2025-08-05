@@ -8,24 +8,31 @@ datasource db {
 }
 
 model User {
-  id             String        @id @default(cuid())
-  name           String?
-  email          String?       @unique
-  emailVerified  DateTime?
-  image          String?
-  password       String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  aiProfile      Json?
-  isAiEnabled    Boolean?      @default(false)
-  connectionType String?
-  accounts       Account[]
-  bankAccounts   BankAccount[]
-  sessions       Session[]
-  statements     Statement[]
-  transactions   Transaction[]
-  userPoints     UserPoints?
-  userTasks      UserTask[]
+  id                   String               @id @default(cuid())
+  name                 String?
+  email                String?              @unique
+  emailVerified        DateTime?
+  image                String?
+  password             String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  aiProfile            Json?
+  isAiEnabled          Boolean?             @default(false)
+  connectionType       String?
+  accounts             Account[]
+  bankAccounts         BankAccount[]
+  sessions             Session[]
+  statements           Statement[]
+  transactions         Transaction[]
+  transactionPatterns  TransactionPattern[]
+  userPoints           UserPoints?
+  userTasks            UserTask[]
+  
+  // AI-Powered Category System Relations
+  categoryPreferences  UserCategoryPreference[]
+  userTypeAnalysis     UserTypeAnalysis?
+  spendingAnalyses     SpendingAnalysis[]
+  preferenceChanges    UserPreferenceChange[]
 }
 
 model UserPoints {
@@ -109,20 +116,86 @@ model Statement {
 }
 
 model Transaction {
-  id            String      @id @default(cuid())
-  statementId   String?
-  description   String
-  amount        Decimal
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  bankAccountId String
-  category      String
-  date          DateTime
-  isRecurring   Boolean     @default(false)
-  userId        String
-  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id])
-  statement     Statement?  @relation(fields: [statementId], references: [id])
-  user          User        @relation(fields: [userId], references: [id])
+  id                  String      @id @default(cuid())
+  statementId         String?
+  description         String
+  amount              Decimal
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  bankAccountId       String
+  category            String
+  date                DateTime
+  isRecurring         Boolean     @default(false)
+  userId              String
+  
+  // New fields for intelligent review system
+  needsReview         Boolean     @default(false)
+  assignedCategory    String?
+  transactionDate     DateTime?
+  source              String      @default("UPLOADED")
+  plaidTransactionId  String?     @unique
+  direction           String?     // 'inflow' or 'outflow'
+  originalText        String?     // Store raw Plaid data
+  merchantName        String?     // Cleaned merchant name
+  confidence          Decimal?    // Confidence score for categorization
+  reviewedAt          DateTime?   // When user reviewed this transaction
+  
+  // Link to transaction pattern for intelligence
+  transactionPatternId String?
+  
+  bankAccount         BankAccount         @relation(fields: [bankAccountId], references: [id])
+  statement           Statement?          @relation(fields: [statementId], references: [id])
+  user                User                @relation(fields: [userId], references: [id])
+  transactionPattern  TransactionPattern? @relation(fields: [transactionPatternId], references: [id])
+
+  @@index([needsReview])
+  @@index([transactionDate])
+  @@index([plaidTransactionId])
+  @@index([userId, needsReview])
+  @@index([transactionPatternId])
+}
+
+model TransactionPattern {
+  id                      String   @id @default(cuid())
+  
+  // Pattern Matching Fields
+  merchantPattern         String   // Normalized merchant name
+  descriptionPattern      String?  // Normalized description pattern
+  amountRangeMin          Decimal? // Minimum amount for this pattern
+  amountRangeMax          Decimal? // Maximum amount for this pattern
+  
+  // AI & External Sources
+  plaidCategory           String?  // Plaid's suggested category
+  plaidConfidence         Decimal? // 0.00 to 100.00
+  chatgptCategory         String?  // ChatGPT's suggested category
+  chatgptConfidence       Decimal? // 0.00 to 100.00
+  chatgptReasoning        String?  // Why ChatGPT chose this category
+  
+  // User Learning
+  userCategory            String?  // User's chosen category (override)
+  userCorrectionCount     Int      @default(0) // Number of times user corrected this
+  userCorrelationRate     Decimal  @default(100.00) // How often user agrees with pattern
+  
+  // Final Decision
+  finalCategory           String   // The category we assign
+  combinedConfidence      Decimal  // Calculated confidence score
+  
+  // Ownership & Metadata
+  userId                  String   // Each user has isolated patterns
+  direction               String   // 'inflow' or 'outflow'
+  firstSeenAt             DateTime @default(now())
+  lastUpdatedAt           DateTime @updatedAt
+  lastSeenAt              DateTime @default(now()) // For decay logic
+  totalOccurrences        Int      @default(1)
+  lastChatgptCallAt       DateTime?
+  
+  user                    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions            Transaction[] // All transactions that match this pattern
+
+  @@index([userId, merchantPattern])
+  @@index([combinedConfidence])
+  @@index([lastSeenAt])
+  @@index([userId, direction])
 }
 
 model PlaidAccount {
@@ -135,34 +208,146 @@ model PlaidAccount {
 }
 
 model Task {
-  id          TaskId     @id
+  id          String    @id
   title       String
   description String
   points      Int
-  priority    Int
+  priority    Int        @unique
+  type        TaskType   @default(ONBOARDING)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
   userTasks   UserTask[]
 }
 
 model UserTask {
-  id        String         @id @default(cuid())
-  userId    String
-  taskId    TaskId
-  status    UserTaskStatus @default(PENDING)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  task      Task           @relation(fields: [taskId], references: [id])
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String     @id @default(cuid())
+  userId      String
+  taskId      String
+  status      TaskStatus @default(PENDING)
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  task        Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, taskId])
 }
 
-enum TaskId {
-  CONNECT_ACCOUNT
-  REVIEW_TRANSACTIONS
-  ENABLE_AI_COMPANION
+enum TaskType {
+  ONBOARDING
+  AI_SUGGESTION
+  GENERAL
 }
 
-enum UserTaskStatus {
+enum TaskStatus {
   PENDING
   COMPLETED
+}
+
+// AI-Powered Category System Models
+
+model Category {
+  id                    String   @id @default(cuid())
+  name                  String   // e.g., "FOOD_AND_DRINK_GROCERIES"
+  displayName           String   // e.g., "Groceries"
+  description           String?
+  mainGroup             String   // e.g., "FOOD", "HOUSING", "TRANSPORTATION"
+  direction             String   // "INFLOW" or "OUTFLOW"
+  isSystemDefault       Boolean  @default(true)
+  icon                  String?
+  defaultColor          String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  userPreferences       UserCategoryPreference[]
+  spendingAnalyses      SpendingAnalysis[]
+  
+  @@unique([name])
+  @@index([mainGroup])
+  @@index([direction])
+  @@index([isSystemDefault])
+}
+
+model UserCategoryPreference {
+  id                    String   @id @default(cuid())
+  userId                String
+  categoryId            String
+  enabled               Boolean  @default(true)
+  customName            String?  // User can override display name
+  monthlyBudget         Decimal?
+  budgetPeriod          String   @default("MONTHLY") // MONTHLY, WEEKLY, YEARLY
+  priority              Int      @default(0) // For display ordering
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category              Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, categoryId])
+  @@index([userId, enabled])
+  @@index([priority])
+}
+
+model UserTypeAnalysis {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  detectedType          String   // COLLEGE_STUDENT, YOUNG_PROFESSIONAL, FAMILY, etc.
+  confidence            Decimal  // 0.00 to 100.00
+  analysisDate          DateTime @default(now())
+  monthsAnalyzed        Int
+  totalTransactions     Int
+  spendingPatterns      Json     // Detailed breakdown of spending patterns
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([detectedType])
+  @@index([confidence])
+}
+
+model SpendingAnalysis {
+  id                    String   @id @default(cuid())
+  userId                String
+  categoryId            String
+  period                String   // LAST_6_MONTHS, LAST_YEAR, etc.
+  averageMonthly        Decimal
+  totalAmount           Decimal
+  transactionCount      Int
+  suggestedBudget       Decimal
+  analysisDate          DateTime @default(now())
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category              Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, categoryId, period])
+  @@index([userId, period])
+  @@index([analysisDate])
+}
+
+model UserPreferenceChange {
+  id                    String   @id @default(cuid())
+  userId                String
+  changeType            String   // CATEGORY_UPDATE, BUDGET_UPDATE, TYPE_CHANGE
+  previousData          Json?
+  newData               Json
+  reason                String?
+  createdAt             DateTime @default(now())
+  
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, changeType])
+  @@index([createdAt])
+}
+
+enum UserType {
+  COLLEGE_STUDENT
+  YOUNG_PROFESSIONAL
+  FAMILY
+  RETIREE
+  SMALL_BUSINESS_OWNER
+  FREELANCER
+  UNKNOWN
 }

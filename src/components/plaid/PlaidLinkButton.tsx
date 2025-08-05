@@ -7,9 +7,11 @@ import { useEffect } from 'react';
 interface PlaidLinkButtonProps {
   onSuccess?: (publicToken: string, institution: { name: string; id: string }) => void;
   onComplete?: () => void; // For modal use - called after successful connection
+  className?: string;
+  autoStart?: boolean; // Whether to auto-start the connection flow
 }
 
-export function PlaidLinkButton({ onSuccess, onComplete }: PlaidLinkButtonProps) {
+export function PlaidLinkButton({ onSuccess, onComplete, className, autoStart = true }: PlaidLinkButtonProps) {
   const { data: linkToken, error, isLoading } = trpc.plaid.createLinkToken.useQuery();
 
   const exchangeToken = trpc.plaid.exchangePublicToken.useMutation({
@@ -41,12 +43,12 @@ export function PlaidLinkButton({ onSuccess, onComplete }: PlaidLinkButtonProps)
     },
   });
   
-  // Automatically open Plaid Link when the component is ready
+  // Automatically open Plaid Link when the component is ready (if autoStart is enabled)
   useEffect(() => {
-    if (ready) {
+    if (ready && autoStart) {
       open();
     }
-  }, [ready, open]);
+  }, [ready, open, autoStart]);
 
   if (isLoading) {
     return <div>Loading...</div>;
@@ -57,9 +59,12 @@ export function PlaidLinkButton({ onSuccess, onComplete }: PlaidLinkButtonProps)
   }
 
   return (
-    // The button is not strictly necessary as we auto-open, but it can be a fallback.
-    <button onClick={() => open()} disabled={!ready}>
-      Connect a bank account
+    <button 
+      onClick={() => open()} 
+      disabled={!ready}
+      className={className}
+    >
+      {autoStart ? 'Connecting...' : 'Connect a bank account'}
     </button>
   );
 } 

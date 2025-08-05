@@ -1,6 +1,8 @@
 import { prisma, Prisma } from './prisma';
 import { PlaidService } from './plaid-service';
 import { PlaidItem, AccountType as AppAccountType } from '@prisma/client';
+import { TransactionProcessor } from './transaction-processor';
+import { extractPlaidCategoryData, extractMerchantName, logPlaidExtractionDebug } from './plaid-data-extractor';
 import {
   RemovedTransaction,
   Transaction as PlaidTransaction,
@@ -109,6 +111,8 @@ export class PlaidSyncService {
     }
 
     // --- Process Added Transactions ---
+    const createdTransactions: any[] = [];
+    
     if (added.length > 0) {
       for (const tx of added) {
         const monthKey = tx.date.slice(0, 7); // YYYY-MM
@@ -139,14 +143,57 @@ export class PlaidSyncService {
 
         const normalizedTx = await normalizePlaidTransaction(tx);
         
-        await prisma.transaction.create({
+        // Extract Plaid category and confidence data
+        const plaidData = extractPlaidCategoryData(tx);
+        const merchantName = extractMerchantName(tx);
+        
+        // Log extraction for debugging
+        logPlaidExtractionDebug(tx, plaidData);
+        
+        // Create transaction with intelligence fields
+        const createdTransaction = await prisma.transaction.create({
           data: {
             ...normalizedTx,
             statementId: statement.id,
+            // Intelligence fields
+            needsReview: true, // Default to review until processed
+            source: 'PLAID',
+            plaidTransactionId: tx.transaction_id,
+            direction: tx.amount < 0 ? 'OUTFLOW' : 'INFLOW',
+            originalText: JSON.stringify(tx), // Store raw Plaid data
+            merchantName: merchantName,
           },
         });
+        
+        // Store the extracted Plaid data on the transaction object for pattern processing
+        (createdTransaction as any).plaidCategory = plaidData.category;
+        (createdTransaction as any).plaidConfidence = plaidData.confidence;
+        
+        createdTransactions.push(createdTransaction);
       }
       console.log(`[PlaidSyncService] Saved ${added.length} new transactions for item ${item.id}.`);
+      
+      // Run intelligence pipeline on new transactions
+      if (createdTransactions.length > 0) {
+        console.log(`🧠 [PlaidSyncService] Running intelligence pipeline on ${createdTransactions.length} new transactions...`);
+        
+        // Convert to TransactionLike format expected by processor
+        const transactionsForProcessing = createdTransactions.map(t => ({
+          id: t.id,
+          description: t.description,
+          merchantName: t.merchantName,
+          amount: t.amount,
+          userId: t.userId
+        }));
+
+        // Run the intelligence pipeline
+        const processingStats = await TransactionProcessor.processNewTransactions(
+          transactionsForProcessing,
+          item.userId
+        );
+
+        console.log(`🎉 [PlaidSyncService] Intelligence processing complete:`, processingStats);
+      }
     }
     
     // TODO: Process Modified and Removed Transactions

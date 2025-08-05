@@ -5,8 +5,8 @@ const seedPrisma = new PrismaClient();
 const initialTasks = [
   {
     id: 'CONNECT_ACCOUNT' as const,
-    title: 'Connect Your First Account',
-    description: 'Link a bank account via Plaid to start tracking your finances.',
+    title: 'Connect Account & Setup Categories',
+    description: 'Connect your bank account and let AI analyze your spending to create your personalized category system.',
     points: 500,
     priority: 1,
   },

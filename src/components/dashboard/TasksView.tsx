@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Check, Lock, ArrowRight } from "lucide-react";
+import { Check, Lock, ArrowRight, Square, CheckSquare } from "lucide-react";
 import { useSession } from "next-auth/react";
 
 import { trpc } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { PlaidConnectionExpanded } from "../tasks/PlaidConnectionExpanded";
+import { TaskWorkspace } from "../tasks/TaskWorkspace";
 
 // Status-based colors (same logic as other components)
 const getStatusColors = (score: number) => {
@@ -55,17 +55,49 @@ const getStatusColors = (score: number) => {
   };
 };
 
+// Confidence-based urgency colors for transaction review
+const getTransactionUrgencyColors = (pendingCount: number) => {
+  if (pendingCount === 0) {
+    return {
+      bg: "bg-gradient-to-r from-green-600 to-green-500 text-white border-green-400",
+      headerBg: "bg-gradient-to-r from-green-600 to-green-500",
+      headerText: "text-white",
+      progressBar: "from-green-400 to-green-500",
+      urgencyLevel: "no-review" as const
+    };
+  } else if (pendingCount <= 5) {
+    return {
+      bg: "bg-gradient-to-r from-yellow-600 to-yellow-500 text-white border-yellow-400",
+      headerBg: "bg-gradient-to-r from-yellow-600 to-yellow-500", 
+      headerText: "text-white",
+      progressBar: "from-yellow-400 to-orange-400",
+      urgencyLevel: "medium-review" as const
+    };
+  } else {
+    return {
+      bg: "bg-gradient-to-r from-red-600 to-red-500 text-white border-red-400",
+      headerBg: "bg-gradient-to-r from-red-600 to-red-500",
+      headerText: "text-white", 
+      progressBar: "from-red-400 via-orange-400 to-yellow-400",
+      urgencyLevel: "high-review" as const
+    };
+  }
+};
+
 interface TasksViewProps {
   onBack: () => void;
   onNavigateToDashboard?: () => void;
 }
 
 export function TasksView({ onBack, onNavigateToDashboard }: TasksViewProps) {
-  const [expandedTask, setExpandedTask] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<any | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const { data: tasks, isLoading } = trpc.tasks.getAllTasks.useQuery();
   const { data: session } = useSession();
   const utils = trpc.useUtils();
+  
+  // Get pending review count
+  const { data: pendingCount = 0 } = trpc.transactions.getPendingReviewCount.useQuery();
   
   // Prevent hydration mismatch
   useEffect(() => {
@@ -81,34 +113,24 @@ export function TasksView({ onBack, onNavigateToDashboard }: TasksViewProps) {
     buttonText: "text-slate-600"
   };
 
-  const handleStartTask = (taskId: string) => {
-    switch (taskId) {
-      case 'CONNECT_ACCOUNT':
-        setExpandedTask(expandedTask === taskId ? null : taskId);
-        break;
-      case 'REVIEW_TRANSACTIONS':
-        // TODO: Navigate to transactions page
-        console.log('Navigate to transactions');
-        break;
-      case 'ENABLE_AI_COMPANION':
-        // TODO: Navigate to AI settings
-        console.log('Navigate to AI settings');
-        break;
-      default:
-        console.log('Unknown task:', taskId);
-    }
+  // Get confidence-based urgency colors for transaction review
+  const transactionUrgency = getTransactionUrgencyColors(pendingCount);
+
+  const handleStartTask = (task: any) => {
+    setSelectedTask(task);
   };
 
-  const handlePlaidSuccess = async () => {
-    // Plaid connection succeeded - refresh task data
+  const handleTaskSuccess = async () => {
+    // Task completed - refresh task data
     await utils.tasks.getAllTasks.invalidate();
     await utils.tasks.getHighestPriorityTask.invalidate();
+    await utils.transactions.getPendingReviewCount.invalidate();
     
     // Show success feedback
-    console.log('🎉 Account connected successfully! Task completed automatically.');
+    console.log('🎉 Task completed successfully!');
     
-    // Collapse the expansion after success
-    setExpandedTask(null);
+    // Clear selected task
+    setSelectedTask(null);
     
     // Navigate back to dashboard after a brief delay to show completion
     setTimeout(() => {
@@ -117,11 +139,7 @@ export function TasksView({ onBack, onNavigateToDashboard }: TasksViewProps) {
       } else {
         onBack(); // Fallback to regular back navigation
       }
-    }, 3000); // Give time to see the success message
-  };
-
-  const handleCollapseTask = () => {
-    setExpandedTask(null);
+    }, 2000);
   };
 
   const getTaskActionLabel = (taskId: string) => {
@@ -139,87 +157,105 @@ export function TasksView({ onBack, onNavigateToDashboard }: TasksViewProps) {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: "100%" }}
       transition={{ duration: 0.5, ease: "easeInOut" }}
-      className="bg-white/60 backdrop-blur-sm rounded-xl shadow-lg p-6 w-full"
+      className="bg-white/60 backdrop-blur-sm rounded-xl shadow-lg w-full h-[calc(100vh-8rem)] flex overflow-hidden"
     >
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-2xl font-bold text-slate-800">Your Tasks</h3>
+      {/* Left Sidebar - Task List (30%) */}
+      <div className="w-[30%] border-r border-gray-200 flex flex-col">
+        {/* Header */}
+        <div className="p-6 border-b border-gray-200">
+          <h3 className="text-xl font-bold text-slate-800">Your Tasks</h3>
+          <p className="text-sm text-gray-600 mt-1">Select a task to get started</p>
       </div>
 
-      {isLoading && <p className="text-slate-500">Loading tasks...</p>}
-
-      <div className="space-y-4">
-        {tasks?.map((task, index) => {
-          // Find the highest priority available task (lowest priority number = highest priority)
+        {/* Task List */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {isLoading && <p className="text-slate-500 p-2">Loading tasks...</p>}
+          
+          <div className="space-y-3">
+            {tasks?.map((task) => {
+              // Find the highest priority available task
           const availableTasks = tasks.filter(t => t.status === "available");
           const isHighestPriority = availableTasks.length > 0 && 
             task.status === "available" && 
             task.priority === Math.min(...availableTasks.map(t => t.priority));
+              
+              const isSelected = selectedTask?.id === task.id;
 
           return (
-            <div key={task.id}>
-              {/* Task Card */}
               <div
+                  key={task.id}
+                  onClick={() => task.status === "available" ? handleStartTask(task) : null}
                 className={cn(
-                  "p-4 rounded-lg flex items-center justify-between transition-all",
-                  task.status === "completed" && "bg-green-100/80 text-green-800",
-                  task.status === "available" && !isHighestPriority && "bg-emerald-50/80",
-                  task.status === "locked" && "bg-slate-100/80 text-slate-500",
-                  // Highest priority task gets status-based styling
-                  isHighestPriority && `${statusColors.bg} ${statusColors.text} shadow-lg border-l-4 ${statusColors.border}`
-                )}
-              >
-                <div>
-                  <h4 className={cn("font-bold", isHighestPriority && "text-white")}>
+                    "p-4 rounded-lg border-2 transition-all cursor-pointer",
+                    // Checkbox and status colors
+                    task.status === "completed" && "bg-green-50 border-green-200 text-green-800",
+                    task.status === "available" && !isHighestPriority && task.id !== 'REVIEW_TRANSACTIONS' && "bg-white border-gray-200 hover:border-blue-300",
+                    task.status === "locked" && "bg-gray-50 border-gray-200 text-gray-500 cursor-not-allowed",
+                    // Review transactions gets confidence-based styling
+                    task.id === 'REVIEW_TRANSACTIONS' && task.status === "available" && transactionUrgency.bg,
+                    // Other highest priority gets red/urgent styling
+                    isHighestPriority && task.id !== 'REVIEW_TRANSACTIONS' && "bg-red-50 border-red-300 text-red-800",
+                    // Selected state - maintain urgency colors for review transactions
+                    isSelected && task.id === 'REVIEW_TRANSACTIONS' && transactionUrgency.bg,
+                    isSelected && task.id !== 'REVIEW_TRANSACTIONS' && "border-blue-500 bg-blue-50"
+                  )}
+                >
+                  <div className="flex items-start space-x-3">
+                    {/* Checkbox */}
+                    <div className="flex-shrink-0 mt-1">
+                      {task.status === "completed" ? (
+                        <CheckSquare className="w-5 h-5 text-green-600" />
+                      ) : task.status === "locked" ? (
+                        <Lock className="w-5 h-5 text-gray-400" />
+                      ) : (
+                        <Square className={cn(
+                          "w-5 h-5",
+                          isHighestPriority ? "text-red-600" : "text-gray-400"
+                        )} />
+                      )}
+                    </div>
+                    
+                    {/* Task Content */}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-sm mb-1 truncate">
                     {task.title}
                   </h4>
-                  <p className={cn("text-sm", isHighestPriority ? "text-white/90" : "opacity-80")}>
+                      <p className="text-xs opacity-80 line-clamp-2 mb-2">
                     {task.description}
                   </p>
-                  <p className={cn("text-xs font-bold mt-1", isHighestPriority ? "text-white/80" : "opacity-60")}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium">
                     {task.points} Points
-                  </p>
+                        </span>
+                        {isHighestPriority && (
+                          <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
+                            High Priority
+                          </span>
+                        )}
+                        {task.id === 'REVIEW_TRANSACTIONS' && pendingCount > 0 && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                            {pendingCount} pending
+                          </span>
+                        )}
                 </div>
-                <div className="flex items-center space-x-4">
-                  {task.status === "completed" && (
-                    <div className="flex items-center text-green-600">
-                      <Check className="w-5 h-5 mr-1" />
-                      <span>Completed</span>
                     </div>
-                  )}
-                  {task.status === "available" && (
-                    <Button 
-                      size="sm"
-                      onClick={() => handleStartTask(task.id)}
-                      className={cn(
-                        isHighestPriority 
-                          ? `bg-white hover:bg-white/90 font-bold ${statusColors.buttonText}`
-                          : "bg-green-600 hover:bg-green-700 text-white"
-                      )}
-                    >
-                      <span>{getTaskActionLabel(task.id)}</span>
-                      <ArrowRight className="w-4 h-4 ml-1" />
-                    </Button>
-                  )}
-                  {task.status === "locked" && (
-                    <div className="flex items-center text-slate-400">
-                      <Lock className="w-5 h-5 mr-1" />
-                      <span className="text-sm">Locked</span>
                     </div>
-                  )}
+                </div>
+              );
+            })}
+          </div>
                 </div>
               </div>
 
-              {/* Inline Expansion for Connect Account */}
-              {task.id === 'CONNECT_ACCOUNT' && (
-                <PlaidConnectionExpanded
-                  isExpanded={expandedTask === 'CONNECT_ACCOUNT'}
-                  onCollapse={handleCollapseTask}
-                  onSuccess={handlePlaidSuccess}
-                />
-              )}
-            </div>
-          );
-        })}
+      {/* Right Workspace (70%) */}
+      <div className="flex-1 flex flex-col">
+        <TaskWorkspace
+          selectedTask={selectedTask}
+          onTaskSuccess={handleTaskSuccess}
+          onClose={() => setSelectedTask(null)}
+          pendingReviewCount={pendingCount}
+          transactionUrgency={transactionUrgency}
+        />
       </div>
     </motion.div>
   );
