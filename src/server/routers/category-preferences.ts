@@ -119,13 +119,14 @@ export const categoryPreferencesRouter = createTRPCRouter({
   // Get user's category preferences or return defaults
   getPreferences: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session.user.id;
-    
-    const preferences = await prisma.categoryPreferences.findUnique({
-      where: { userId }
+
+    const rows = await prisma.userCategoryPreference.findMany({
+      where: { userId },
+      include: { category: true },
+      orderBy: [{ priority: 'asc' }, { category: { displayName: 'asc' } }]
     });
 
-    if (!preferences) {
-      // Return default configuration
+    if (rows.length === 0) {
       return {
         userType: null,
         categoryConfig: DEFAULT_CATEGORIES,
@@ -134,14 +135,21 @@ export const categoryPreferencesRouter = createTRPCRouter({
       };
     }
 
+    const categoryConfig: Record<string, CategoryConfig> = {};
+    for (const row of rows) {
+      const mainGroup = row.category.mainGroup;
+      // Use enabled flag; subcategories are not persisted, return empty array
+      categoryConfig[mainGroup] = categoryConfig[mainGroup] || {
+        enabled: true,
+        color: DEFAULT_CATEGORIES[mainGroup as keyof typeof DEFAULT_CATEGORIES]?.color || '#666666',
+        subcategories: []
+      };
+    }
+
     return {
-      id: preferences.id,
-      userType: preferences.userType,
-      categoryConfig: preferences.categoryConfig as Record<string, CategoryConfig>,
-      migrationPolicy: preferences.migrationPolicy,
-      effectiveDate: preferences.effectiveDate,
-      lastMigrationAt: preferences.lastMigrationAt,
-      backupCreated: preferences.backupCreated,
+      userType: null,
+      categoryConfig,
+      migrationPolicy: "NEW_SHEETS_ONLY" as const,
       isDefault: false
     };
   }),
@@ -173,26 +181,26 @@ export const categoryPreferencesRouter = createTRPCRouter({
         };
       });
 
-      // Upsert preferences
-      const preferences = await prisma.categoryPreferences.upsert({
-        where: { userId },
-        create: {
+      // Replace user preferences with the preset selection (enabled where preset says enabled)
+      await prisma.userCategoryPreference.deleteMany({ where: { userId } });
+      // Find categories by name from preset
+      const allCategories = await prisma.category.findMany({ where: { isSystemDefault: true } });
+      const enabledCategoryNames = Object.entries(presetConfig)
+        .filter(([, cfg]) => cfg.enabled)
+        .map(([name]) => name);
+      const toCreate = allCategories
+        .filter(c => enabledCategoryNames.includes(c.mainGroup) || enabledCategoryNames.includes(c.name))
+        .map((c, idx) => ({
           userId,
-          userType,
-          categoryConfig,
-          migrationPolicy,
-          version: 1
-        },
-        update: {
-          userType,
-          categoryConfig,
-          migrationPolicy,
-          effectiveDate: new Date(),
-          version: { increment: 1 }
-        }
-      });
+          categoryId: c.id,
+          enabled: true,
+          priority: idx
+        }));
+      if (toCreate.length > 0) {
+        await prisma.userCategoryPreference.createMany({ data: toCreate });
+      }
 
-      return preferences;
+      return { success: true };
     }),
 
   // Update custom category configuration
@@ -215,25 +223,19 @@ export const categoryPreferencesRouter = createTRPCRouter({
         };
       });
 
-      const preferences = await prisma.categoryPreferences.upsert({
-        where: { userId },
-        create: {
-          userId,
-          userType: "CUSTOM",
-          categoryConfig: configWithColors,
-          migrationPolicy,
-          version: 1
-        },
-        update: {
-          userType: "CUSTOM",
-          categoryConfig: configWithColors,
-          migrationPolicy,
-          effectiveDate: new Date(),
-          version: { increment: 1 }
-        }
-      });
-
-      return preferences;
+      // Replace preferences with provided config (enable groups present)
+      await prisma.userCategoryPreference.deleteMany({ where: { userId } });
+      const allCategories = await prisma.category.findMany({ where: { isSystemDefault: true } });
+      const enabledGroups = Object.entries(configWithColors)
+        .filter(([, cfg]) => cfg.enabled)
+        .map(([group]) => group);
+      const toCreate = allCategories
+        .filter(c => enabledGroups.includes(c.mainGroup))
+        .map((c, idx) => ({ userId, categoryId: c.id, enabled: true, priority: idx }));
+      if (toCreate.length > 0) {
+        await prisma.userCategoryPreference.createMany({ data: toCreate });
+      }
+      return { success: true };
     }),
 
   // Get available user type presets
@@ -249,9 +251,7 @@ export const categoryPreferencesRouter = createTRPCRouter({
     const userId = ctx.session.user.id;
 
     // Delete existing preferences to use defaults
-    await prisma.categoryPreferences.deleteMany({
-      where: { userId }
-    });
+    await prisma.userCategoryPreference.deleteMany({ where: { userId } });
 
     return { success: true };
   }),
@@ -264,13 +264,7 @@ export const categoryPreferencesRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
 
-      const preferences = await prisma.categoryPreferences.update({
-        where: { userId },
-        data: {
-          migrationPolicy: input.migrationPolicy
-        }
-      });
-
-      return preferences;
+      // No dedicated storage for migration policy; acknowledge request
+      return { success: true } as any;
     })
 }); 

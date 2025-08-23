@@ -19,7 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { FileUpload } from "@/components/ui/file-upload";
-import { api } from "@/trpc/client";
+import { trpc } from "@/trpc/client";
 import { toast } from "sonner";
 import { FileCheck, Upload, Loader2, AlertCircle, Info, Calendar, CreditCard, Plus } from "lucide-react";
 import { format } from "date-fns";
@@ -60,7 +60,7 @@ export function UploadModal({ children }: UploadModalProps) {
   };
 
   // Handle error type in onError properly
-  const uploadMutation = api.statement.upload.useMutation({
+  const uploadMutation = trpc.statement.upload.useMutation({
     onSuccess: () => {
       toast.success("Statement uploaded successfully", {
         description: "Your statement is now processing. The page will refresh to show updated data.",
@@ -80,7 +80,7 @@ export function UploadModal({ children }: UploadModalProps) {
   });
 
   // Create mutation for checking duplicates
-  const checkDuplicateMutation = api.statement.checkDuplicate.useMutation({
+  const checkDuplicateMutation = trpc.statement.checkDuplicate.useMutation({
     onSuccess: (data) => {
       if (data.error) {
         toast.error("Error checking for duplicates", {
