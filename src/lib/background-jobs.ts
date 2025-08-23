@@ -13,8 +13,8 @@ export class BackgroundJobRunner {
   }
 }
 
-export async function triggerGenerateAiProfile() {
-  console.log('AI profile generation not implemented yet');
+export async function triggerGenerateAiProfile(userId?: string) {
+  console.log('AI profile generation not implemented yet', { userId });
   return { success: true, message: 'AI profile generation placeholder' };
 }
 

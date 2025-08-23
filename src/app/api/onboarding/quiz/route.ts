@@ -16,11 +16,11 @@ export async function POST(req: Request) {
       return new NextResponse("Invalid request body, answers are missing.", { status: 400 });
     }
 
-    // Save the raw quiz answers to the user's profile
+    // Save the raw quiz answers into the existing JSON field `aiProfile`
     await prisma.user.update({
       where: { id: session.user.id },
       data: {
-        quizAnswers: answers,
+        aiProfile: { quizAnswers: answers },
       },
     });
 
