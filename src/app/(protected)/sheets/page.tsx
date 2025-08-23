@@ -6,7 +6,9 @@ export default async function SheetsPage() {
   const session = await requireAuth();
   
   // Get user's Personal Finance spreadsheet
-  const personalFinanceSpreadsheet = await prisma.personalFinanceSpreadsheet.findUnique({
+  // Some environments may not have this model yet; access defensively
+  const prismaAny = prisma as any;
+  const personalFinanceSpreadsheet = await prismaAny.personalFinanceSpreadsheet?.findUnique({
     where: { userId: session.user.id },
     include: {
       monthlySheets: {
