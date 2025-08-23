@@ -71,6 +71,28 @@ export function AuthForm() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
+  // Avoid window access during SSR by reading viewport on client only
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const update = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  // Precompute random icon positions on client only to avoid SSR mismatches
+  const [iconPositions, setIconPositions] = useState<{ x: number; y: number }[]>([]);
+  useEffect(() => {
+    const { width, height } = viewport;
+    if (!width || !height) return;
+    setIconPositions(
+      floatingIcons.map(() => ({
+        x: Math.random() * width,
+        y: Math.random() * height,
+      }))
+    );
+  }, [viewport.width, viewport.height]);
+
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -183,8 +205,8 @@ export function AuthForm() {
             key={index}
             className={`absolute ${item.color}`}
             initial={{
-              x: Math.random() * window.innerWidth,
-              y: Math.random() * window.innerHeight,
+              x: iconPositions[index]?.x ?? 0,
+              y: iconPositions[index]?.y ?? 0,
               scale: 0,
               rotate: 0,
             }}

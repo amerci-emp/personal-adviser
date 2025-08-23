@@ -67,9 +67,6 @@ export function SmartTaskBadge({ onNavigateToTasks }: SmartTaskBadgeProps) {
   const playerScore = session?.user?.points || 1500;
   const colors = isMounted ? getStatusColors(playerScore) : { bg: "bg-slate-500", text: "text-white" };
 
-  // Debug logging
-  console.log('SmartTaskBadge Debug:', { task, isLoading, error, playerScore });
-
   // Show error state for debugging
   if (error) {
     return (
@@ -79,14 +76,14 @@ export function SmartTaskBadge({ onNavigateToTasks }: SmartTaskBadgeProps) {
     );
   }
 
-  // Show loading state for debugging
-  if (isLoading) {
-    return (
-      <div className="w-full bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded">
-        Loading tasks...
-      </div>
-    );
-  }
+  // // Show loading state for debugging
+  // if (isLoading) {
+  //   return (
+  //     <div className="w-full bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded">
+  //       Loading tasks...
+  //     </div>
+  //   );
+  // }
 
   // Show no task state for debugging
   if (!task) {
