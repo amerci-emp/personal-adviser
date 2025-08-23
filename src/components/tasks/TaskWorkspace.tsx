@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import { PlaidConnectionExpanded } from "./PlaidConnectionExpanded";
-import { EnhancedConnectAccountWorkspace } from "./EnhancedConnectAccountWorkspace";
+import { SubTaskAwareConnectWorkspace } from "./SubTaskAwareConnectWorkspace";
 import { TransactionReviewWorkspace } from "./TransactionReviewWorkspace";
 
 interface TaskWorkspaceProps {
@@ -19,6 +19,12 @@ interface TaskWorkspaceProps {
     progressBar: string;
     urgencyLevel: "no-review" | "medium-review" | "high-review";
   };
+  connectAccountColors?: {
+    bg: string;
+    headerBg: string;
+    headerText: string;
+    urgencyLevel: "completed" | "critical";
+  } | null;
 }
 
 export function TaskWorkspace({ 
@@ -26,9 +32,15 @@ export function TaskWorkspace({
   onTaskSuccess, 
   onClose,
   pendingReviewCount = 0,
-  transactionUrgency
+  transactionUrgency,
+  connectAccountColors
 }: TaskWorkspaceProps) {
   const [reviewProgress, setReviewProgress] = useState({ completed: 0, total: 0, percentage: 0 });
+  const [connectAccountProgress, setConnectAccountProgress] = useState<{
+    percentage: number;
+    currentSubTask: { name: string; title: string } | null;
+    allSubTasks: { name: string; title: string }[];
+  } | null>(null);
   if (!selectedTask) {
     return (
       <div className="flex-1 flex items-center justify-center text-gray-500">
@@ -45,9 +57,10 @@ export function TaskWorkspace({
       case 'CONNECT_ACCOUNT':
         return (
           <div className="h-full">
-            <EnhancedConnectAccountWorkspace
+            <SubTaskAwareConnectWorkspace
               onComplete={onTaskSuccess}
               onClose={onClose}
+              onProgressUpdate={setConnectAccountProgress}
             />
           </div>
         );
@@ -98,6 +111,8 @@ export function TaskWorkspace({
       <div className={`flex items-center justify-between p-4 border-b border-gray-200 ${
         selectedTask.id === 'REVIEW_TRANSACTIONS' && transactionUrgency 
           ? transactionUrgency.headerBg 
+          : selectedTask.id === 'CONNECT_ACCOUNT' && connectAccountColors
+          ? connectAccountColors.headerBg
           : 'bg-white'
       }`}>
         <div className="flex items-center space-x-3">
@@ -105,11 +120,15 @@ export function TaskWorkspace({
             <h1 className={`text-xl font-semibold ${
               selectedTask.id === 'REVIEW_TRANSACTIONS' && transactionUrgency
                 ? transactionUrgency.headerText
+                : selectedTask.id === 'CONNECT_ACCOUNT' && connectAccountColors
+                ? connectAccountColors.headerText
                 : 'text-gray-900'
             }`}>{selectedTask.title}</h1>
             <p className={`text-sm ${
               selectedTask.id === 'REVIEW_TRANSACTIONS' && transactionUrgency
                 ? transactionUrgency.headerText + ' opacity-80'
+                : selectedTask.id === 'CONNECT_ACCOUNT' && connectAccountColors
+                ? connectAccountColors.headerText + ' opacity-80'
                 : 'text-gray-600'
             }`}>{selectedTask.points} Points</p>
           </div>
@@ -140,6 +159,30 @@ export function TaskWorkspace({
               {transactionUrgency.urgencyLevel === 'high-review' && '🔥 High Priority'}
               {transactionUrgency.urgencyLevel === 'medium-review' && '⚠️ Medium Priority'}
               {transactionUrgency.urgencyLevel === 'no-review' && '✅ All Set'}
+            </div>
+          </div>
+        )}
+
+        {/* Show progress for connect account */}
+        {selectedTask.id === 'CONNECT_ACCOUNT' && connectAccountColors && connectAccountProgress && (
+          <div className="flex items-center space-x-4">
+            {/* Current step info */}
+            <div className={`text-sm ${connectAccountColors.headerText} opacity-90`}>
+              {connectAccountProgress.currentSubTask?.title || 'Starting...'} - {Math.round(connectAccountProgress.percentage)}%
+            </div>
+            
+            {/* Progress bar */}
+            <div className="w-32 bg-white/20 rounded-full h-2">
+              <div 
+                className="bg-white h-2 rounded-full transition-all duration-500"
+                style={{ width: `${connectAccountProgress.percentage}%` }}
+              />
+            </div>
+            
+            {/* Urgency level */}
+            <div className={`text-sm font-medium ${connectAccountColors.headerText} opacity-90`}>
+              {connectAccountColors.urgencyLevel === 'critical' && '🔥 Critical'}
+              {connectAccountColors.urgencyLevel === 'completed' && '✅ Complete'}
             </div>
           </div>
         )}

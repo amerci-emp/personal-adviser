@@ -1,5 +1,4 @@
 import { PrismaClient } from '@prisma/client';
-import { USER_TYPE_PRESETS } from '../../prisma/seed-categories';
 import { SpendingPatterns, UserTypeResult } from './user-type-detection-service';
 
 export interface CategoryRecommendation {
@@ -48,6 +47,13 @@ export class CategoryRecommendationEngine {
     userTypeAnalysis: UserTypeResult
   ): Promise<CategoryRecommendation[]> {
     console.log(`💡 Generating category recommendations for ${userTypeAnalysis.detectedType}...`);
+    console.log(`📊 User analysis details:`, {
+      detectedType: userTypeAnalysis.detectedType,
+      confidence: userTypeAnalysis.confidence,
+      monthsAnalyzed: userTypeAnalysis.monthsAnalyzed,
+      totalTransactions: userTypeAnalysis.totalTransactions,
+      spendingPatternsKeys: Object.keys(userTypeAnalysis.spendingPatterns)
+    });
 
     // Get all available categories
     const allCategories = await this.prisma.category.findMany({
@@ -59,11 +65,26 @@ export class CategoryRecommendationEngine {
       ]
     });
 
-    // Get user type preset recommendations
-    const presetCategories = USER_TYPE_PRESETS[userTypeAnalysis.detectedType as keyof typeof USER_TYPE_PRESETS]?.categories || [];
+    // Get user type preset recommendations from database
+    const userTypePresets = await this.prisma.userTypePreset.findMany({
+      where: { 
+        userType: userTypeAnalysis.detectedType,
+        isDefault: true 
+      },
+      include: {
+        category: true
+      },
+      orderBy: {
+        priority: 'asc'
+      }
+    });
+    
+    const presetCategories = userTypePresets.map(preset => preset.category.name);
+    console.log(`🎯 Preset categories for ${userTypeAnalysis.detectedType}:`, presetCategories);
 
     // Analyze user's historical spending to find additional relevant categories
     const historicalCategories = this.analyzeHistoricalCategoryUsage(userTypeAnalysis.spendingPatterns);
+    console.log(`📈 Historical category usage:`, Object.keys(historicalCategories));
 
     const recommendations: CategoryRecommendation[] = [];
 
@@ -113,12 +134,23 @@ export class CategoryRecommendationEngine {
     }
 
     // Sort by confidence and recommendation status
-    return recommendations.sort((a, b) => {
+    const sortedRecommendations = recommendations.sort((a, b) => {
       if (a.isRecommended !== b.isRecommended) {
         return a.isRecommended ? -1 : 1;
       }
       return b.confidence - a.confidence;
     });
+
+    const recommendedCount = sortedRecommendations.filter(r => r.isRecommended).length;
+    console.log(`✅ Generated ${sortedRecommendations.length} category recommendations (${recommendedCount} recommended)`);
+    console.log(`🔍 Top 5 recommended categories:`, 
+      sortedRecommendations
+        .filter(r => r.isRecommended)
+        .slice(0, 5)
+        .map(r => ({ name: r.displayName, confidence: r.confidence, reasoning: r.reasoning }))
+    );
+
+    return sortedRecommendations;
   }
 
   /**
@@ -130,21 +162,41 @@ export class CategoryRecommendationEngine {
     spendingPatterns: SpendingPatterns
   ): Promise<BudgetSuggestion[]> {
     console.log(`💰 Generating budget suggestions for ${selectedCategoryIds.length} categories...`);
+    console.log(`💰 Selected category IDs:`, selectedCategoryIds);
+    console.log(`💰 SpendingPatterns summary:`, {
+      monthsAnalyzed: spendingPatterns.monthsAnalyzed,
+      totalTransactions: spendingPatterns.totalTransactions,
+      categoryDistributionCount: Object.keys(spendingPatterns.categoryDistribution).length,
+      categoryDistributionKeys: Object.keys(spendingPatterns.categoryDistribution)
+    });
 
     const categories = await this.prisma.category.findMany({
       where: { id: { in: selectedCategoryIds } }
     });
+    console.log(`💰 Found ${categories.length} categories for budget suggestions`);
+    console.log(`💰 Category details:`, categories.map(c => ({ 
+      id: c.id, 
+      name: c.name, 
+      displayName: c.displayName, 
+      mainGroup: c.mainGroup 
+    })));
 
     const budgetSuggestions: BudgetSuggestion[] = [];
 
     for (const category of categories) {
       const suggestion = this.calculateBudgetSuggestion(category, spendingPatterns);
       if (suggestion) {
+        console.log(`💰 Budget suggestion for ${category.displayName}: $${suggestion.suggestedAmount}`);
         budgetSuggestions.push(suggestion);
+      } else {
+        console.log(`💰 No budget suggestion generated for ${category.displayName}`);
       }
     }
 
-    return budgetSuggestions.sort((a, b) => b.suggestedAmount - a.suggestedAmount);
+    const sortedSuggestions = budgetSuggestions.sort((a, b) => b.suggestedAmount - a.suggestedAmount);
+    console.log(`✅ Generated ${sortedSuggestions.length} budget suggestions`);
+    
+    return sortedSuggestions;
   }
 
   /**
@@ -338,13 +390,48 @@ export class CategoryRecommendationEngine {
     category: any, 
     spendingPatterns: SpendingPatterns
   ): BudgetSuggestion | null {
+    console.log(`💰 [calculateBudgetSuggestion] Processing category: ${category.name} (${category.displayName})`);
+    console.log(`💰 [calculateBudgetSuggestion] Available categoryDistribution keys:`, Object.keys(spendingPatterns.categoryDistribution));
+    
     const categoryData = spendingPatterns.categoryDistribution[category.name];
+    console.log(`💰 [calculateBudgetSuggestion] Direct lookup result for "${category.name}":`, categoryData);
+    
+    // Try alternative lookups if direct match fails
+    let actualCategoryData = categoryData;
+    let lookupMethod = 'direct';
     
     if (!categoryData || categoryData.transactionCount === 0) {
+      console.log(`💰 [calculateBudgetSuggestion] Direct lookup failed, trying alternative matches...`);
+      
+      // Try mapping from display name or related Plaid categories
+      const alternativeKeys = Object.keys(spendingPatterns.categoryDistribution).filter(key => {
+        const keyLower = key.toLowerCase();
+        const categoryLower = category.name.toLowerCase();
+        const displayNameLower = (category.displayName || '').toLowerCase();
+        
+        return keyLower.includes(categoryLower) || 
+               keyLower.includes(displayNameLower) ||
+               categoryLower.includes(keyLower) ||
+               displayNameLower.includes(keyLower);
+      });
+      
+      console.log(`💰 [calculateBudgetSuggestion] Alternative key candidates:`, alternativeKeys);
+      
+      if (alternativeKeys.length > 0) {
+        actualCategoryData = spendingPatterns.categoryDistribution[alternativeKeys[0]];
+        lookupMethod = `alternative (${alternativeKeys[0]})`;
+        console.log(`💰 [calculateBudgetSuggestion] Using alternative key "${alternativeKeys[0]}":`, actualCategoryData);
+      }
+    }
+    
+    if (!actualCategoryData || actualCategoryData.transactionCount === 0) {
+      console.log(`💰 [calculateBudgetSuggestion] No transaction data found, trying group average...`);
       // Use category group average if specific category has no data
       const groupAverage = this.calculateGroupAverage(category.mainGroup, spendingPatterns);
+      console.log(`💰 [calculateBudgetSuggestion] Group average for "${category.mainGroup}": ${groupAverage}`);
+      
       if (groupAverage > 0) {
-        return {
+        const suggestion = {
           categoryId: category.id,
           categoryName: category.name,
           suggestedAmount: Math.round(groupAverage * 0.3), // Conservative estimate
@@ -352,29 +439,44 @@ export class CategoryRecommendationEngine {
           historicalAverage: 0,
           confidence: 30
         };
+        console.log(`💰 [calculateBudgetSuggestion] Generated group-based suggestion:`, suggestion);
+        return suggestion;
       }
+      console.log(`💰 [calculateBudgetSuggestion] No group average available, returning null`);
       return null;
     }
 
-    const monthlyAverage = categoryData.totalAmount / spendingPatterns.monthsAnalyzed;
+    console.log(`💰 [calculateBudgetSuggestion] Found transaction data via ${lookupMethod}:`, {
+      totalAmount: actualCategoryData.totalAmount,
+      transactionCount: actualCategoryData.transactionCount,
+      monthsAnalyzed: spendingPatterns.monthsAnalyzed
+    });
+
+    const monthlyAverage = actualCategoryData.totalAmount / spendingPatterns.monthsAnalyzed;
+    console.log(`💰 [calculateBudgetSuggestion] Monthly average: $${monthlyAverage.toFixed(2)}`);
     
     // Add 10% buffer for budget planning
     const suggestedAmount = Math.round(monthlyAverage * 1.1);
+    console.log(`💰 [calculateBudgetSuggestion] Suggested amount (with 10% buffer): $${suggestedAmount}`);
     
     const confidence = Math.min(
-      (categoryData.transactionCount * 10) + 
+      (actualCategoryData.transactionCount * 10) + 
       Math.min(spendingPatterns.monthsAnalyzed * 5, 20),
       90
     );
+    console.log(`💰 [calculateBudgetSuggestion] Confidence calculation: ${confidence}%`);
 
-    return {
+    const suggestion = {
       categoryId: category.id,
       categoryName: category.name,
       suggestedAmount,
-      reasoning: `Based on ${categoryData.transactionCount} transactions over ${spendingPatterns.monthsAnalyzed} months`,
+      reasoning: `Based on ${actualCategoryData.transactionCount} transactions over ${spendingPatterns.monthsAnalyzed} months (via ${lookupMethod})`,
       historicalAverage: Math.round(monthlyAverage),
       confidence
     };
+    
+    console.log(`💰 [calculateBudgetSuggestion] Final suggestion for ${category.name}:`, suggestion);
+    return suggestion;
   }
 
   private calculateGroupAverage(mainGroup: string, spendingPatterns: SpendingPatterns): number {

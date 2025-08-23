@@ -8,6 +8,7 @@ import { categoriesRouter } from "./routers/categories";
 import { tasksRouter } from "./routers/tasks";
 import { plaidRouter } from "./routers/plaid";
 import { transactionsRouter } from "./routers/transactions";
+import { subtasksRouter } from "./routers/subtasks";
 
 export const appRouter = createTRPCRouter({
   user: userRouter,
@@ -17,6 +18,7 @@ export const appRouter = createTRPCRouter({
   categoryPreferences: categoryPreferencesRouter,
   categories: categoriesRouter,
   tasks: tasksRouter,
+  subtasks: subtasksRouter,
   plaid: plaidRouter,
   transactions: transactionsRouter,
 });

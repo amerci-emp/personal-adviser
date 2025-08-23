@@ -68,6 +68,34 @@ export function extractPlaidCategoryData(transaction: PlaidTransactionData): Pla
 }
 
 /**
+ * Extracts Plaid categories as an array [primary, detailed]
+ */
+export function extractPlaidCategoriesArray(transaction: PlaidTransactionData): string[] {
+  const pfc = transaction.personal_finance_category;
+  
+  if (!pfc) {
+    return ['GENERAL_MERCHANDISE', 'GENERAL_MERCHANDISE_OTHER'];
+  }
+
+  const categories: string[] = [];
+  
+  if (pfc.primary) {
+    categories.push(pfc.primary);
+  }
+  
+  if (pfc.detailed && pfc.detailed !== pfc.primary) {
+    categories.push(pfc.detailed);
+  }
+  
+  // Fallback if no categories found
+  if (categories.length === 0) {
+    categories.push('GENERAL_MERCHANDISE', 'GENERAL_MERCHANDISE_OTHER');
+  }
+  
+  return categories;
+}
+
+/**
  * Extracts merchant name from various Plaid fields
  */
 export function extractMerchantName(transaction: PlaidTransactionData): string {

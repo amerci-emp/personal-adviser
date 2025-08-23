@@ -1,6 +1,6 @@
-import { CATEGORY_SYSTEM, getAllCategories } from "./category-system";
 import { PatternMatchingService } from "./pattern-matching-service";
 import { ConfidenceEngine } from "./confidence-engine";
+import { PrismaClient } from "@prisma/client";
 
 export interface TransactionForAI {
   id: string;
@@ -89,8 +89,17 @@ export class ChatGPTBatchService {
     console.log(`🤖 Processing ChatGPT batch of ${this.batch.length} transactions`);
     
     try {
-      const prompt = this.buildBatchPrompt(this.batch.map(b => b.transaction));
-      const results = await this.callChatGPT(prompt);
+      // Get categories from database
+      const prisma = new PrismaClient();
+      const dbCategories = await prisma.category.findMany({
+        where: { isSystemDefault: true },
+        select: { name: true }
+      });
+      const categories = dbCategories.map(c => c.name);
+      await prisma.$disconnect();
+      
+      const prompt = this.buildBatchPrompt(this.batch.map(b => b.transaction), categories);
+      const results = await this.callChatGPT(prompt, categories);
       await this.saveResults(results, this.batch);
       
       console.log(`✅ Successfully processed ${results.length} transaction categorizations`);
@@ -101,9 +110,8 @@ export class ChatGPTBatchService {
     }
   }
   
-  // Build optimized prompt for batch processing
-  private static buildBatchPrompt(transactions: TransactionForAI[]): string {
-    const categories = getAllCategories();
+  // Build optimized prompt for batch processing (pass categories as parameter)
+  private static buildBatchPrompt(transactions: TransactionForAI[], categories: string[]): string {
     
     const prompt = `You are a financial transaction categorization expert. Categorize these ${transactions.length} transactions into the most appropriate category from the provided list.
 
@@ -141,12 +149,12 @@ JSON Response:`;
   }
   
   // Call ChatGPT API
-  private static async callChatGPT(prompt: string): Promise<AICategorizationResult[]> {
+  private static async callChatGPT(prompt: string, validCategories: string[]): Promise<AICategorizationResult[]> {
     const openaiApiKey = process.env.OPENAI_API_KEY;
     
     if (!openaiApiKey) {
       console.warn('⚠️ OPENAI_API_KEY not found, using fallback categorization');
-      return this.fallbackCategorization(prompt);
+      return this.fallbackCategorization(prompt, validCategories);
     }
     
     try {
@@ -189,16 +197,16 @@ JSON Response:`;
       const results: AICategorizationResult[] = JSON.parse(cleanedContent);
       
       // Validate results
-      return this.validateAndCleanResults(results);
+      return this.validateAndCleanResults(results, validCategories);
       
     } catch (error) {
       console.error('ChatGPT API call failed:', error);
-      return this.fallbackCategorization(prompt);
+      return this.fallbackCategorization(prompt, validCategories);
     }
   }
   
   // Fallback categorization when ChatGPT is unavailable
-  private static fallbackCategorization(prompt: string): AICategorizationResult[] {
+  private static fallbackCategorization(prompt: string, validCategories: string[]): AICategorizationResult[] {
     console.log('🔄 Using fallback categorization logic');
     
     // Extract transaction IDs from prompt
@@ -218,9 +226,8 @@ JSON Response:`;
     });
   }
   
-  // Validate and clean AI results
-  private static validateAndCleanResults(results: any[]): AICategorizationResult[] {
-    const validCategories = getAllCategories();
+  // Validate and clean AI results (pass categories as parameter)
+  private static validateAndCleanResults(results: any[], validCategories: string[]): AICategorizationResult[] {
     const cleanResults: AICategorizationResult[] = [];
     
     for (const result of results) {

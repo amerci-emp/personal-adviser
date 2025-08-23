@@ -100,7 +100,7 @@ export const categoriesRouter = createTRPCRouter({
   analyzeUserTypeAndRecommendCategories: protectedProcedure
     .input(z.object({
       minMonths: z.number().min(1).max(24).default(6)
-    }))
+    }).optional().default({ minMonths: 6 }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session.user.id) {
         throw new TRPCError({
@@ -140,6 +140,72 @@ export const categoriesRouter = createTRPCRouter({
           recommendedCategoryIds,
           userTypeAnalysis.spendingPatterns
         );
+
+        console.log(`🎉 Analysis complete for user ${userId}:`);
+        console.log(`  - User Type: ${userTypeAnalysis.detectedType} (${userTypeAnalysis.confidence}% confidence)`);
+        console.log(`  - Category Recommendations: ${categoryRecommendations.length} total, ${categoryRecommendations.filter(r => r.isRecommended).length} recommended`);
+        console.log(`  - Budget Suggestions: ${budgetSuggestions.length} generated`);
+
+        // Validate that we have both categories and budget suggestions
+        const recommendedCategories = categoryRecommendations.filter(r => r.isRecommended);
+        if (recommendedCategories.length === 0) {
+          console.error(`❌ AI Analysis validation failed: No recommended categories generated`);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "AI analysis failed: No category recommendations were generated. This may indicate insufficient transaction data or analysis issues.",
+          });
+        }
+
+        if (budgetSuggestions.length === 0) {
+          console.error(`❌ AI Analysis validation failed: No budget suggestions generated for ${recommendedCategories.length} recommended categories`);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "AI analysis failed: No budget suggestions were generated. This may indicate insufficient spending data or category mapping issues.",
+          });
+        }
+
+        console.log(`✅ AI Analysis validation passed: ${recommendedCategories.length} categories and ${budgetSuggestions.length} budget suggestions generated`);
+
+        // Store the AI-suggested categories in UserCategoryPreference as defaults
+        console.log(`💾 Storing ${recommendedCategories.length} AI-suggested categories in database...`);
+        
+        // First, clear any existing preferences for this user to avoid conflicts
+        await ctx.prisma.userCategoryPreference.deleteMany({
+          where: { userId }
+        });
+
+        // Create UserCategoryPreference entries for all recommended categories
+        const categoryPreferences = recommendedCategories.map((rec, index) => {
+          // Find matching budget suggestion for this category
+          const budgetSuggestion = budgetSuggestions.find(budget => budget.categoryId === rec.categoryId);
+          
+          return {
+            userId,
+            categoryId: rec.categoryId,
+            enabled: true, // AI recommended these, so enable by default
+            customName: rec.displayName, // Use the display name as custom name
+            monthlyBudget: budgetSuggestion?.suggestedAmount || null, // Use AI-suggested budget if available
+            priority: rec.priority || index // Use recommendation priority or order
+          };
+        });
+
+        await ctx.prisma.userCategoryPreference.createMany({
+          data: categoryPreferences
+        });
+
+        console.log(`✅ Stored ${categoryPreferences.length} AI-suggested categories in UserCategoryPreference table`);
+        console.log(`💰 Budget amounts set for ${budgetSuggestions.length} categories`);
+
+        // Log the preference change for audit trail
+        await ctx.prisma.userPreferenceChange.create({
+          data: {
+            userId,
+            changeType: 'CATEGORY_UPDATE',
+            previousData: null, // No previous preferences
+            newData: categoryPreferences,
+            reason: 'INITIAL_AI_SUGGESTIONS'
+          }
+        });
 
         return {
           userTypeAnalysis,
@@ -232,6 +298,17 @@ export const categoriesRouter = createTRPCRouter({
         });
 
         console.log(`✅ Updated category preferences for user ${userId}: ${input.categories.length} categories`);
+
+        // Trigger ChatGPT batch processing now that categories are customized
+        console.log(`🤖 Triggering ChatGPT batch processing for user ${userId} after category customization`);
+        try {
+          const { ChatGPTBatchService } = await import("@/lib/chatgpt-batch-service");
+          await ChatGPTBatchService.forceProcessBatch();
+          console.log(`✅ ChatGPT batch processing completed for user ${userId}`);
+        } catch (batchError) {
+          console.error(`⚠️ ChatGPT batch processing failed for user ${userId}:`, batchError);
+          // Don't fail the entire operation if batch processing fails
+        }
 
         return {
           success: true,

@@ -41,8 +41,8 @@ export async function POST(req: Request) {
     // A map to hold the results of each update
     const updateResults = [];
 
-    for (const { id, assignedCategory } of transactionsToUpdate) {
-      if (!id || !assignedCategory) {
+      for (const { id, category } of transactionsToUpdate) {
+    if (!id || !category) {
         updateResults.push({ id, status: 'skipped', reason: 'Missing id or category' });
         continue;
       }
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
           await prisma.transaction.update({
             where: { id: id },
             data: {
-              assignedCategory: assignedCategory,
+              category: category,
               needsReview: false,
             },
           });

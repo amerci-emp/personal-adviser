@@ -34,6 +34,72 @@ export const bankAccountRouter = createTRPCRouter({
     return accounts;
   }),
 
+  // Get analysis summary data for debugging
+  getAnalysisSummary: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.session.user.id) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "User ID is not available",
+      });
+    }
+
+    const userId = ctx.session.user.id;
+
+    // Get accounts with transaction counts
+    const accounts = await ctx.prisma.bankAccount.findMany({
+      where: { userId },
+      include: {
+        statements: true,
+        plaidAccounts: true,
+        _count: {
+          select: {
+            transactions: true
+          }
+        }
+      }
+    });
+
+    // Get total transaction count
+    const totalTransactions = await ctx.prisma.transaction.count({
+      where: { userId }
+    });
+
+    // Get total statement count  
+    const totalStatements = await ctx.prisma.statement.count({
+      where: { userId }
+    });
+
+    // Get recent transactions for date range
+    const recentTransaction = await ctx.prisma.transaction.findFirst({
+      where: { userId },
+      orderBy: { date: 'desc' }
+    });
+
+    const oldestTransaction = await ctx.prisma.transaction.findFirst({
+      where: { userId },
+      orderBy: { date: 'asc' }
+    });
+
+    return {
+      totalAccounts: accounts.length,
+      totalTransactions,
+      totalStatements,
+      accounts: accounts.map(account => ({
+        id: account.id,
+        name: account.name || 'Unknown Account',
+        institutionName: account.institutionName || 'Unknown Bank',
+        accountType: account.accountType,
+        lastFourDigits: account.lastFourDigits,
+        transactionCount: account._count.transactions,
+        statementCount: account.statements.length
+      })),
+      dateRange: {
+        earliest: oldestTransaction?.date,
+        latest: recentTransaction?.date
+      }
+    };
+  }),
+
   // Get a single bank account by ID
   getById: protectedProcedure
     .input(z.object({ id: z.string() }))

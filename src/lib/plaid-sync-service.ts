@@ -25,7 +25,6 @@ async function normalizePlaidTransaction(
   const vagueCategories = ['GENERAL_MERCHANDISE', 'GENERAL_SERVICES', 'GOVERNMENT_AND_NON_PROFIT', 'TRANSFER_OUT', 'TRANSFER_IN'];
 
   let needsReview = false;
-  let assignedCategory = plaidCategory;
 
   if (!plaidCategory || vagueCategories.includes(plaidCategory)) {
     needsReview = true;
@@ -44,7 +43,6 @@ async function normalizePlaidTransaction(
     originalText: JSON.stringify(plaidTx), // Store original data for debugging
     needsReview: needsReview, 
     exported: false,
-    assignedCategory: assignedCategory,
     cleanedMerchant: plaidTx.merchant_name,
   };
 }
@@ -88,7 +86,7 @@ export class PlaidSyncService {
 
     // Paginate through sync results until hasMore is false
     while (hasMore) {
-      const syncData = await plaidService.syncTransactions(item.accessToken, cursor);
+      let syncData = await plaidService.syncTransactions(item.accessToken, cursor);
       
       // --- Log Raw Transaction Data to File ---
       try {
@@ -108,6 +106,9 @@ export class PlaidSyncService {
       cursor = syncData.next_cursor;
 
       console.log(`[PlaidSyncService] Fetched page for item ${item.id}. Added: ${syncData.added.length}, Modified: ${syncData.modified.length}, Removed: ${syncData.removed.length}. Has more: ${hasMore}`);
+      
+      // Note: Fallback data is now handled directly in PlaidService.syncTransactionsRaw()
+      // This provides more reliable fallback when Plaid sandbox is empty
     }
 
     // --- Process Added Transactions ---
@@ -186,10 +187,11 @@ export class PlaidSyncService {
           userId: t.userId
         }));
 
-        // Run the intelligence pipeline
+        // Run the intelligence pipeline (defer AI processing until after category customization)
         const processingStats = await TransactionProcessor.processNewTransactions(
           transactionsForProcessing,
-          item.userId
+          item.userId,
+          false // Defer AI processing until user customizes categories
         );
 
         console.log(`🎉 [PlaidSyncService] Intelligence processing complete:`, processingStats);

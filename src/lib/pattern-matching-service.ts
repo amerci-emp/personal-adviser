@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { TransactionPattern, Transaction } from "@prisma/client";
-import { getDirectionFromAmount } from "./category-system";
+// Utility function to determine direction from amount
+const getDirectionFromAmount = (amount: number): 'INFLOW' | 'OUTFLOW' => {
+  return amount >= 0 ? 'INFLOW' : 'OUTFLOW';
+};
 
 export interface TransactionLike {
   id?: string;

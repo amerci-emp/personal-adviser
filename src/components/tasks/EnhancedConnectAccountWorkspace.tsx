@@ -90,9 +90,28 @@ export function EnhancedConnectAccountWorkspace({
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Get analysis summary data for debugging
+  const { data: analysisSummary, isLoading: summaryLoading } = trpc.bankAccount.getAnalysisSummary.useQuery();
+
   // tRPC Mutations
   const analyzeUserType = trpc.categories.analyzeUserTypeAndRecommendCategories.useMutation({
     onSuccess: (data) => {
+      console.log(`🎯 Client received AI analysis results:`, {
+        userType: data.userTypeAnalysis?.detectedType,
+        confidence: data.userTypeAnalysis?.confidence,
+        categoryRecommendationsCount: data.categoryRecommendations?.length,
+        recommendedCategoriesCount: data.categoryRecommendations?.filter(r => r.isRecommended)?.length,
+        budgetSuggestionsCount: data.budgetSuggestions?.length
+      });
+      
+      console.log(`🎯 Setting state with analysis data:`, {
+        userTypeAnalysis: data.userTypeAnalysis,
+        hasReasoning: !!data.userTypeAnalysis?.reasoning,
+        reasoningLength: data.userTypeAnalysis?.reasoning?.length,
+        categoryRecommendations: data.categoryRecommendations?.length,
+        budgetSuggestions: data.budgetSuggestions?.length
+      });
+      
       setUserTypeAnalysis(data.userTypeAnalysis);
       setCategoryRecommendations(data.categoryRecommendations);
       setBudgetSuggestions(data.budgetSuggestions);
@@ -112,11 +131,17 @@ export function EnhancedConnectAccountWorkspace({
       });
       setSelectedCategories(initialSelected);
       
+      console.log(`🎯 Transitioning to user-type-presentation step`);
       setCurrentStep('user-type-presentation');
       setIsProcessing(false);
     },
     onError: (error) => {
-      console.error('Failed to analyze user type:', error);
+      console.error('❌ Failed to analyze user type:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        code: error.data?.code,
+        httpStatus: error.data?.httpStatus
+      });
       setIsProcessing(false);
     }
   });
@@ -288,6 +313,58 @@ export function EnhancedConnectAccountWorkspace({
         </p>
       </div>
 
+      {/* Debugging Summary */}
+      {analysisSummary && !summaryLoading && (
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+            <h3 className="text-sm font-semibold text-purple-800 mb-3">📊 Analyzing Data From</h3>
+            
+            {/* Summary Stats */}
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="text-center">
+                <div className="text-lg font-bold text-purple-700">{analysisSummary.totalAccounts}</div>
+                <div className="text-xs text-purple-600">Accounts</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-purple-700">{analysisSummary.totalTransactions}</div>
+                <div className="text-xs text-purple-600">Transactions</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-purple-700">{analysisSummary.totalStatements}</div>
+                <div className="text-xs text-purple-600">Statements</div>
+              </div>
+            </div>
+
+            {/* Account Details */}
+            <div className="space-y-2">
+              {analysisSummary.accounts.map((account, index) => (
+                <div key={account.id} className="flex justify-between items-center text-xs bg-white rounded px-3 py-2">
+                  <div className="flex items-center space-x-2">
+                    <div className="font-medium text-gray-700">
+                      {account.institutionName || 'Unknown Bank'}
+                    </div>
+                    <div className="text-gray-500">
+                      {account.name} (...{account.lastFourDigits || '????'})
+                    </div>
+                  </div>
+                  <div className="text-purple-600 font-medium">
+                    {account.transactionCount} txns
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Date Range */}
+            {analysisSummary.dateRange.earliest && analysisSummary.dateRange.latest && (
+              <div className="mt-3 text-xs text-purple-600 text-center">
+                Data from {new Date(analysisSummary.dateRange.earliest).toLocaleDateString()} 
+                to {new Date(analysisSummary.dateRange.latest).toLocaleDateString()}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4">
         <div className="flex items-center justify-center space-x-2">
           <Loader className="w-5 h-5 animate-spin text-purple-600" />
@@ -306,60 +383,83 @@ export function EnhancedConnectAccountWorkspace({
     </div>
   );
 
-  const renderUserTypePresentation = () => (
-    <div className="space-y-6">
-      <div className="text-center space-y-4">
-        <div className="w-20 h-20 mx-auto bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center">
-          <TrendingUp className="w-10 h-10 text-white" />
-        </div>
-        
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">
-            You appear to be a {userTypeAnalysis?.detectedType.replace(/_/g, ' ')}
-          </h2>
-          <p className="text-gray-600">
-            Based on {userTypeAnalysis?.monthsAnalyzed} months of transaction data 
-            ({userTypeAnalysis?.totalTransactions} transactions analyzed)
-          </p>
-        </div>
-      </div>
+  const renderUserTypePresentation = () => {
+    console.log(`🎯 Rendering user type presentation with:`, {
+      userTypeAnalysis,
+      hasDetectedType: !!userTypeAnalysis?.detectedType,
+      hasReasoning: !!userTypeAnalysis?.reasoning,
+      currentStep
+    });
 
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">What we learned about your spending:</h3>
-        <div className="space-y-2">
-          {userTypeAnalysis?.reasoning.slice(0, 5).map((reason, index) => (
-            <div key={index} className="flex items-start space-x-3">
-              <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
-              <span className="text-gray-700">{reason}</span>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <div className="text-center">
-        <Button 
-          onClick={() => setCurrentStep('category-customization')}
-          className="bg-blue-600 hover:bg-blue-700"
-        >
-          Continue to Category Setup
-          <ArrowRight className="w-4 h-4 ml-2" />
-        </Button>
-      </div>
-    </div>
-  );
-
-  const renderCategoryCustomization = () => (
-    <div className="h-full flex flex-col">
-      {/* Compact Header with Inline Stats */}
-      <div className="flex-shrink-0 border-b border-gray-200 pb-3 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Settings className="w-5 h-5 text-blue-600" />
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Customize Categories</h2>
-              <p className="text-sm text-gray-600">Select categories and set budgets</p>
-            </div>
+    return (
+      <div className="space-y-6">
+        <div className="text-center space-y-4">
+          <div className="w-20 h-20 mx-auto bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center">
+            <TrendingUp className="w-10 h-10 text-white" />
           </div>
+          
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">
+              You appear to be a {userTypeAnalysis?.detectedType?.replace(/_/g, ' ') || 'Financial User'}
+            </h2>
+            <p className="text-gray-600">
+              Based on {userTypeAnalysis?.monthsAnalyzed || 0} months of transaction data 
+              ({userTypeAnalysis?.totalTransactions || 0} transactions analyzed)
+            </p>
+          </div>
+        </div>
+
+        <Card className="p-6">
+          <h3 className="text-lg font-semibold mb-4">What we learned about your spending:</h3>
+          <div className="space-y-2">
+            {userTypeAnalysis?.reasoning?.slice(0, 5).map((reason: string, index: number) => (
+              <div key={index} className="flex items-start space-x-3">
+                <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                <span className="text-gray-700">{reason}</span>
+              </div>
+            )) || (
+              <div className="flex items-start space-x-3">
+                <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                <span className="text-gray-700">Analysis completed successfully</span>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <div className="text-center">
+          <Button 
+            onClick={() => setCurrentStep('category-customization')}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            Continue to Category Setup
+            <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCategoryCustomization = () => {
+    console.log(`🎯 Rendering category customization with:`, {
+      categoryRecommendationsCount: categoryRecommendations.length,
+      recommendedCount: categoryRecommendations.filter(r => r.isRecommended).length,
+      selectedCategoriesCount: Object.keys(selectedCategories).length,
+      budgetSuggestionsCount: budgetSuggestions.length,
+      groupedCategoriesKeys: Object.keys(groupedCategories)
+    });
+
+    return (
+      <div className="h-full flex flex-col">
+        {/* Compact Header with Inline Stats */}
+        <div className="flex-shrink-0 border-b border-gray-200 pb-3 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Settings className="w-5 h-5 text-blue-600" />
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Customize Categories</h2>
+                <p className="text-sm text-gray-600">Select categories and set budgets</p>
+              </div>
+            </div>
           <div className="flex items-center space-x-4 text-sm">
             <div className="flex items-center space-x-1">
               <span className="text-blue-600 font-medium">{selectedCount}</span>
@@ -379,15 +479,24 @@ export function EnhancedConnectAccountWorkspace({
 
       {/* Categories - Full Height */}
       <div className="flex-1 overflow-y-auto space-y-4">
-        {Object.entries(groupedCategories).map(([group, categories]) => (
-          <Card key={group} className="p-4">
-            <button
-              onClick={() => toggleGroupExpansion(group)}
-              className="flex items-center justify-between w-full text-left"
-            >
-              <h3 className="text-lg font-semibold text-gray-900">
-                {group.replace(/_/g, ' ')} ({categories.length})
-              </h3>
+        {Object.entries(groupedCategories).length === 0 ? (
+          <div className="text-center py-8">
+            <div className="text-gray-500">
+              <Brain className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>No category recommendations available</p>
+              <p className="text-sm">AI analysis may still be processing</p>
+            </div>
+          </div>
+        ) : (
+          Object.entries(groupedCategories).map(([group, categories]) => (
+            <Card key={group} className="p-4">
+              <button
+                onClick={() => toggleGroupExpansion(group)}
+                className="flex items-center justify-between w-full text-left"
+              >
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {group.replace(/_/g, ' ')} ({categories.length})
+                </h3>
               {expandedGroups[group] ? (
                 <Minus className="w-5 h-5 text-gray-500" />
               ) : (
@@ -442,8 +551,9 @@ export function EnhancedConnectAccountWorkspace({
                 </motion.div>
               )}
             </AnimatePresence>
-          </Card>
-        ))}
+            </Card>
+          ))
+        )}
       </div>
 
       {/* Action Buttons - Fixed at Bottom */}

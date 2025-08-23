@@ -9,7 +9,10 @@ import { trpc } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { getDirectionFromAmount, CATEGORY_DISPLAY_NAMES } from "@/lib/category-system";
+// Utility function to format category names for display
+const formatCategoryName = (categoryName: string) => {
+  return categoryName.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+};
 
 interface Transaction {
   id: string;
@@ -84,7 +87,7 @@ export function TransactionReviewWorkspace({
   // Helper function to get display name for a category
   const getCategoryDisplayName = (categoryName: string): string => {
     const userCategory = userCategories.find(c => c.name === categoryName);
-    return userCategory?.customName || userCategory?.displayName || CATEGORY_DISPLAY_NAMES[categoryName] || categoryName.replace(/_/g, ' ');
+    return userCategory?.customName || userCategory?.displayName || formatCategoryName(categoryName);
   };
 
   const currentTransaction = transactions[currentIndex];
@@ -258,7 +261,7 @@ export function TransactionReviewWorkspace({
   // Get current category to display
   const currentCategoryToShow = selectedCategory || currentTransaction.suggestedCategory;
   const displayName = currentCategoryToShow ? 
-    (CATEGORY_DISPLAY_NAMES[currentCategoryToShow] || currentCategoryToShow.replace(/_/g, ' ')) : 
+                    formatCategoryName(currentCategoryToShow) : 
     'No suggestion';
 
   return (
@@ -391,7 +394,7 @@ export function TransactionReviewWorkspace({
                   {/* Top 10 Category Options */}
                   <div className="space-y-1 max-h-64 overflow-y-auto">
                     {filteredCategories.slice(0, 10).map((category) => {
-                      const displayName = CATEGORY_DISPLAY_NAMES[category] || category.replace(/_/g, ' ');
+                      const displayName = formatCategoryName(category);
                       const isSelected = selectedCategory === category;
                       
                       return (

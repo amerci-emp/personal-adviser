@@ -4,7 +4,10 @@ import { TRPCError } from "@trpc/server";
 import { PatternMatchingService } from "@/lib/pattern-matching-service";
 import { ConfidenceEngine } from "@/lib/confidence-engine";
 import { TransactionProcessor } from "@/lib/transaction-processor";
-import { getAllCategories, getDirectionFromAmount } from "@/lib/category-system";
+// Utility function to determine direction from amount
+const getDirectionFromAmount = (amount: number): 'INFLOW' | 'OUTFLOW' => {
+  return amount >= 0 ? 'INFLOW' : 'OUTFLOW';
+};
 
 // Helper function to map Plaid confidence levels to numbers
 function mapPlaidConfidenceToNumber(confidenceLevel: string): number {
@@ -78,7 +81,7 @@ export const transactionsRouter = createTRPCRouter({
         amount: Number(transaction.amount),
         date: transaction.date,
         direction: getDirectionFromAmount(Number(transaction.amount)),
-        suggestedCategory: transaction.assignedCategory || plaidData.plaidCategory, // Use assigned or Plaid suggestion
+        suggestedCategory: transaction.category || plaidData.plaidCategory, // Use category or Plaid suggestion
         confidence: transaction.confidence ? Number(transaction.confidence) : plaidData.plaidConfidence,
         // Debug data for development
         originalText: transaction.originalText,
@@ -164,7 +167,7 @@ export const transactionsRouter = createTRPCRouter({
       const updatedTransaction = await ctx.prisma.transaction.update({
         where: { id: transactionId },
         data: {
-          assignedCategory: category,
+          category: category,
           needsReview: false,
           reviewedAt: new Date(),
           confidence: 99 // User review gives highest confidence
@@ -210,7 +213,7 @@ export const transactionsRouter = createTRPCRouter({
         success: true,
         transaction: {
           id: updatedTransaction.id,
-          category: updatedTransaction.assignedCategory,
+          category: updatedTransaction.category,
           needsReview: updatedTransaction.needsReview
         }
       };
@@ -233,7 +236,13 @@ export const transactionsRouter = createTRPCRouter({
       }
 
       const { reviews } = input;
-      const validCategories = getAllCategories();
+      
+      // Get valid categories from database
+      const dbCategories = await ctx.prisma.category.findMany({
+        where: { isSystemDefault: true },
+        select: { name: true }
+      });
+      const validCategories = dbCategories.map(c => c.name);
       const results = [];
 
       for (const review of reviews) {
@@ -266,7 +275,7 @@ export const transactionsRouter = createTRPCRouter({
           await ctx.prisma.transaction.update({
             where: { id: review.transactionId },
             data: {
-              assignedCategory: review.category,
+              category: review.category,
               needsReview: false,
               reviewedAt: new Date(),
               confidence: 99
@@ -319,15 +328,25 @@ export const transactionsRouter = createTRPCRouter({
     .input(z.object({
       amount: z.number()
     }))
-    .query(({ input }) => {
+    .query(async ({ ctx, input }) => {
       const direction = getDirectionFromAmount(input.amount);
+      
+      // Get categories from database
+      const categories = await ctx.prisma.category.findMany({
+        where: { 
+          isSystemDefault: true,
+          direction: direction // Filter by direction
+        },
+        select: { 
+          name: true,
+          displayName: true,
+          mainGroup: true
+        }
+      });
+      
       return {
         direction,
-        categories: getAllCategories().filter(cat => {
-          // Filter categories based on direction if needed
-          // For now, return all categories
-          return true;
-        })
+        categories: categories.map(c => c.name)
       };
     }),
 
@@ -437,7 +456,8 @@ export const transactionsRouter = createTRPCRouter({
 
       const stats = await TransactionProcessor.processNewTransactions(
         transactionsForProcessing,
-        ctx.session.user.id
+        ctx.session.user.id,
+        false // Allow immediate AI processing for manual triggers
       );
 
       return {

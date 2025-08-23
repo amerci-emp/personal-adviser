@@ -2,7 +2,7 @@ import { PlaidService } from './plaid-service';
 import { encrypt } from './encryption';
 import type { PrismaClient } from '@prisma/client';
 import { TransactionProcessor } from './transaction-processor';
-import { extractPlaidCategoryData, extractMerchantName, logPlaidExtractionDebug } from './plaid-data-extractor';
+import { extractPlaidCategoryData, extractPlaidCategoriesArray, extractMerchantName, logPlaidExtractionDebug } from './plaid-data-extractor';
 
 export class PlaidImportService {
   private plaidService: PlaidService;
@@ -40,12 +40,26 @@ export class PlaidImportService {
       }
 
       // 3. Sync transactions (using raw token)
+      console.log(`🔄 About to sync transactions with access token: ${accessToken.substring(0, 10)}...`);
       const transactionsData = await this.plaidService.syncTransactionsRaw(accessToken);
       console.log(`📝 Found ${transactionsData.added.length} transactions`);
+      console.log(`📊 Transaction sync details:`, {
+        added: transactionsData.added.length,
+        modified: transactionsData.modified.length,
+        removed: transactionsData.removed.length,
+        hasMore: transactionsData.has_more,
+        nextCursor: transactionsData.next_cursor ? 'present' : 'null'
+      });
       
       // Log transaction data for debugging
       if (transactionsData.added.length > 0) {
         console.log('📋 Sample transaction:', JSON.stringify(transactionsData.added[0], null, 2));
+        console.log('📋 All transaction IDs:', transactionsData.added.map(t => ({ 
+          id: t.transaction_id, 
+          name: t.name, 
+          amount: t.amount, 
+          date: t.date 
+        })));
       } else {
         console.log('⚠️ No transactions found - this might be normal for a new sandbox account');
       }
@@ -68,15 +82,22 @@ export class PlaidImportService {
       let importedCount = 0;
       const createdTransactions: any[] = [];
       
+      console.log(`💾 Starting to import ${transactionsData.added.length} transactions to database...`);
+      
       for (const transaction of transactionsData.added) {
         try {
+          console.log(`💳 Processing transaction: ${transaction.name} (${transaction.transaction_id})`);
+          
           // Extract Plaid category and confidence data
           const plaidData = extractPlaidCategoryData(transaction);
+          const plaidCategoriesArray = extractPlaidCategoriesArray(transaction);
           const merchantName = extractMerchantName(transaction);
           
           // Log extraction for debugging
           logPlaidExtractionDebug(transaction, plaidData);
+          console.log(`📋 Extracted Plaid categories: [${plaidCategoriesArray.join(', ')}]`);
           
+          console.log(`💾 Creating transaction in database...`);
           const createdTransaction = await prisma.transaction.create({
             data: {
               statementId: statement.id,
@@ -85,27 +106,32 @@ export class PlaidImportService {
               description: transaction.name,
               amount: Math.abs(transaction.amount), // Plaid uses negative for outflows
               date: new Date(transaction.date),
-              category: 'uncategorized', // Will be updated by intelligence pipeline
+              category: 'uncategorized', // Will be updated by mapping service
+              plaidCategories: plaidCategoriesArray, // Store Plaid categories array
               // Intelligence fields - will be set by TransactionProcessor
               needsReview: true, // Default to review until processed
               source: 'PLAID',
               plaidTransactionId: transaction.transaction_id,
-              direction: transaction.amount < 0 ? 'OUTFLOW' : 'INFLOW',
+              direction: transaction.amount < 0 ? 'outflow' : 'inflow',
               originalText: JSON.stringify(transaction), // Store raw Plaid data for debugging
               merchantName: merchantName,
             },
           });
           
           // Store the extracted Plaid data on the transaction object for pattern processing
-          (createdTransaction as any).plaidCategory = plaidData.category;
+          (createdTransaction as any).plaidCategories = plaidCategoriesArray;
           (createdTransaction as any).plaidConfidence = plaidData.confidence;
+          
+          console.log(`✅ Successfully created transaction in database: ${createdTransaction.id}`);
           
           createdTransactions.push(createdTransaction);
           importedCount++;
         } catch (error) {
-          console.error(`Failed to import transaction: ${transaction.name}`, error);
+          console.error(`❌ Failed to import transaction: ${transaction.name}`, error);
         }
       }
+      
+      console.log(`📊 Database import completed: ${importedCount}/${transactionsData.added.length} transactions imported`)
 
       // 6. If no transactions were imported, just log it
       if (importedCount === 0) {
@@ -128,14 +154,29 @@ export class PlaidImportService {
           plaidConfidence: (t as any).plaidConfidence
         }));
 
-        // Run the intelligence pipeline
+        // Run the intelligence pipeline (defer AI processing until after category customization)
         const processingStats = await TransactionProcessor.processNewTransactions(
           transactionsForProcessing,
-          userId
+          userId,
+          false // Defer AI processing for initial imports
         );
 
         console.log(`🎉 Intelligence processing complete:`, processingStats);
       }
+
+      // 8. Verify what's actually in the database
+      const dbTransactionCount = await prisma.transaction.count({
+        where: { userId: userId }
+      });
+      console.log(`🔍 Database verification: ${dbTransactionCount} total transactions for user ${userId}`);
+      
+      const recentTransactions = await prisma.transaction.findMany({
+        where: { userId: userId },
+        orderBy: { createdAt: 'desc' },
+        take: 3,
+        select: { id: true, description: true, amount: true, date: true, createdAt: true }
+      });
+      console.log(`📝 Recent transactions in database:`, recentTransactions);
 
       console.log(`✅ Import complete: ${importedCount} transactions imported`);
       

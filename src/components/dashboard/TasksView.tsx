@@ -84,6 +84,25 @@ const getTransactionUrgencyColors = (pendingCount: number) => {
   }
 };
 
+// Binary urgency colors for CONNECT_ACCOUNT (critical foundation task)
+const getConnectAccountColors = (isCompleted: boolean) => {
+  if (isCompleted) {
+    return {
+      bg: "bg-gradient-to-r from-green-600 to-green-500 text-white border-green-400",
+      headerBg: "bg-gradient-to-r from-green-600 to-green-500",
+      headerText: "text-white",
+      urgencyLevel: "completed" as const
+    };
+  } else {
+    return {
+      bg: "bg-gradient-to-r from-red-600 to-red-500 text-white border-red-400",
+      headerBg: "bg-gradient-to-r from-red-600 to-red-500",
+      headerText: "text-white",
+      urgencyLevel: "critical" as const
+    };
+  }
+};
+
 interface TasksViewProps {
   onBack: () => void;
   onNavigateToDashboard?: () => void;
@@ -189,15 +208,18 @@ export function TasksView({ onBack, onNavigateToDashboard }: TasksViewProps) {
                     "p-4 rounded-lg border-2 transition-all cursor-pointer",
                     // Checkbox and status colors
                     task.status === "completed" && "bg-green-50 border-green-200 text-green-800",
-                    task.status === "available" && !isHighestPriority && task.id !== 'REVIEW_TRANSACTIONS' && "bg-white border-gray-200 hover:border-blue-300",
+                    task.status === "available" && !isHighestPriority && task.id !== 'REVIEW_TRANSACTIONS' && task.id !== 'CONNECT_ACCOUNT' && "bg-white border-gray-200 hover:border-blue-300",
                     task.status === "locked" && "bg-gray-50 border-gray-200 text-gray-500 cursor-not-allowed",
                     // Review transactions gets confidence-based styling
                     task.id === 'REVIEW_TRANSACTIONS' && task.status === "available" && transactionUrgency.bg,
+                    // Connect account gets binary bright urgency styling (red until complete, then green)
+                    task.id === 'CONNECT_ACCOUNT' && getConnectAccountColors(task.status === "completed").bg,
                     // Other highest priority gets red/urgent styling
-                    isHighestPriority && task.id !== 'REVIEW_TRANSACTIONS' && "bg-red-50 border-red-300 text-red-800",
-                    // Selected state - maintain urgency colors for review transactions
+                    isHighestPriority && task.id !== 'REVIEW_TRANSACTIONS' && task.id !== 'CONNECT_ACCOUNT' && "bg-red-50 border-red-300 text-red-800",
+                    // Selected state - maintain urgency colors for special tasks
                     isSelected && task.id === 'REVIEW_TRANSACTIONS' && transactionUrgency.bg,
-                    isSelected && task.id !== 'REVIEW_TRANSACTIONS' && "border-blue-500 bg-blue-50"
+                    isSelected && task.id === 'CONNECT_ACCOUNT' && getConnectAccountColors(task.status === "completed").bg,
+                    isSelected && task.id !== 'REVIEW_TRANSACTIONS' && task.id !== 'CONNECT_ACCOUNT' && "border-blue-500 bg-blue-50"
                   )}
                 >
                   <div className="flex items-start space-x-3">
@@ -255,6 +277,7 @@ export function TasksView({ onBack, onNavigateToDashboard }: TasksViewProps) {
           onClose={() => setSelectedTask(null)}
           pendingReviewCount={pendingCount}
           transactionUrgency={transactionUrgency}
+          connectAccountColors={selectedTask?.id === 'CONNECT_ACCOUNT' ? getConnectAccountColors(selectedTask?.status === "completed") : null}
         />
       </div>
     </motion.div>

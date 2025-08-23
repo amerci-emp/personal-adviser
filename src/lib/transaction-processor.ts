@@ -3,11 +3,14 @@ import { PatternMatchingService, TransactionLike } from "./pattern-matching-serv
 import { ConfidenceEngine } from "./confidence-engine";
 import { TransferDetectionService } from "./transfer-detection-service";
 import { ChatGPTBatchService, TransactionForAI } from "./chatgpt-batch-service";
-import { getDirectionFromAmount } from "./category-system";
+import { plaidMappingService } from "./plaid-category-mapping-service";
+// Utility function to determine direction from amount
+const getDirectionFromAmount = (amount: number): 'INFLOW' | 'OUTFLOW' => {
+  return amount >= 0 ? 'INFLOW' : 'OUTFLOW';
+};
 
 export interface ProcessedTransaction extends TransactionLike {
   needsReview: boolean;
-  assignedCategory?: string;
   confidence?: number;
   isTransfer?: boolean;
   transferReason?: string;
@@ -26,7 +29,8 @@ export class TransactionProcessor {
   // Main entry point for processing new transactions
   static async processNewTransactions(
     transactions: TransactionLike[],
-    userId: string
+    userId: string,
+    deferAIProcessing: boolean = false
   ): Promise<ProcessingStats> {
     console.log(`🔄 Processing ${transactions.length} transactions for user ${userId}`);
     const startTime = Date.now();
@@ -55,8 +59,8 @@ export class TransactionProcessor {
     const { transfers, nonTransfers } = await this.processTransfers(unknownTransactions, userId);
     stats.transfers = transfers.length;
     
-    // 4. Batch unknown non-transfer transactions for AI processing
-    if (nonTransfers.length > 0) {
+    // 4. Batch unknown non-transfer transactions for AI processing (unless deferred)
+    if (nonTransfers.length > 0 && !deferAIProcessing) {
       const aiTransactions: TransactionForAI[] = nonTransfers.map(t => ({
         id: t.id || `temp_${Date.now()}_${Math.random()}`,
         description: t.description,
@@ -66,53 +70,84 @@ export class TransactionProcessor {
         userId: t.userId
       }));
       
+      console.log(`🔄 Adding ${aiTransactions.length} transactions to ChatGPT batch (immediate processing)`);
       await ChatGPTBatchService.addTransactions(aiTransactions, userId);
       stats.sentToAI = aiTransactions.length;
+    } else if (nonTransfers.length > 0 && deferAIProcessing) {
+      console.log(`⏸️ Deferring AI processing for ${nonTransfers.length} transactions until category customization is complete`);
+      // We'll still count them as "sent to AI" for stats purposes, even though processing is deferred
+      stats.sentToAI = nonTransfers.length;
     }
     
     // 5. Create initial patterns for unknown transactions using Plaid data
     for (const transaction of nonTransfers) {
-      // Check if transaction has Plaid data attached
-      const plaidCategory = (transaction as any).plaidCategory;
+      // Check if transaction has Plaid categories data attached
+      const plaidCategories = (transaction as any).plaidCategories;
       const plaidConfidence = (transaction as any).plaidConfidence;
       
-      if (plaidCategory && plaidConfidence && transaction.id) {
-        console.log(`🎯 Creating initial pattern for ${transaction.description} with Plaid data (${plaidCategory}, ${plaidConfidence}%)`);
+      if (plaidCategories && Array.isArray(plaidCategories) && plaidCategories.length > 0 && transaction.id) {
+        const plaidPrimary = plaidCategories[0];
+        const plaidDetailed = plaidCategories[1];
         
-        // Create initial pattern with Plaid data and link transaction
-        await PatternMatchingService.createOrUpdatePatternAndLink(
-          userId,
-          transaction as TransactionLike & { id: string },
-          {
-            plaidCategory,
-            plaidConfidence,
-            finalCategory: plaidCategory, // Use Plaid category as initial suggestion
-            combinedConfidence: plaidConfidence
-          }
+        console.log(`🎯 Processing transaction ${transaction.description} with Plaid categories [${plaidCategories.join(', ')}]`);
+        
+        // NEW: Map Plaid categories to our internal category system
+        const mapping = await plaidMappingService.mapPlaidCategory(
+          plaidPrimary,
+          plaidDetailed,
+          transaction.merchantName,
+          transaction.description
         );
         
-        // If Plaid confidence is high enough, auto-assign
-        const threshold = await this.getConfidenceThreshold(userId);
-        if (plaidConfidence >= threshold) {
-          console.log(`✅ Auto-assigning transaction ${transaction.id} based on Plaid confidence (${plaidConfidence}% >= ${threshold}%)`);
+        const mappedCategory = mapping.ourCategory;
+        const mappedConfidence = Math.min((plaidConfidence || 80) * (mapping.confidence / 100), 100);
+        
+        console.log(`🔄 Mapped [${plaidCategories.join(', ')}] → ${mappedCategory} (confidence: ${mappedConfidence}%)`);
+        
+        // Always update the category field with our mapped category
+        if (mappedCategory !== 'uncategorized') {
+          // Create initial pattern with mapped category data
+          await PatternMatchingService.createOrUpdatePatternAndLink(
+            userId,
+            transaction as TransactionLike & { id: string },
+            {
+              plaidCategory: plaidPrimary,
+              plaidConfidence: plaidConfidence || 80,
+              finalCategory: mappedCategory,
+              combinedConfidence: mappedConfidence
+            }
+          );
+          
+          // Update the transaction with mapped category
+          const threshold = await this.getConfidenceThreshold(userId);
+          const needsReview = mappedConfidence < threshold;
+          
+          console.log(`✅ ${needsReview ? 'Assigning with review' : 'Auto-assigning'} transaction ${transaction.id}: ${mappedCategory} (confidence: ${mappedConfidence}%)`);
           
           if (transaction.id) {
             try {
               await prisma.transaction.update({
                 where: { id: transaction.id },
                 data: {
-                  assignedCategory: plaidCategory,
-                  needsReview: false,
-                  confidence: plaidConfidence,
+                  category: mappedCategory, // Use mapped category in the category field
+                  needsReview: needsReview,
+                  confidence: mappedConfidence,
                   direction: getDirectionFromAmount(transaction.amount)
                 }
               });
-              stats.autoAssigned++;
-              continue; // Skip marking for review
+              
+              if (needsReview) {
+                stats.needsReview++;
+              } else {
+                stats.autoAssigned++;
+              }
+              continue; // Skip default review marking
             } catch (error) {
-              console.warn(`⚠️ Could not auto-assign transaction ${transaction.id}:`, error);
+              console.warn(`⚠️ Could not update transaction ${transaction.id}:`, error);
             }
           }
+        } else {
+          console.log(`⚠️ Transaction ${transaction.id} mapped to uncategorized, will need manual review`);
         }
       }
       
@@ -194,12 +229,12 @@ export class TransactionProcessor {
     // Update transaction in database if it exists
     if (transaction.id) {
       try {
-        await prisma.transaction.update({
-          where: { id: transaction.id },
-          data: {
-            assignedCategory: pattern.finalCategory,
-            needsReview: false,
-            confidence: confidence,
+                  await prisma.transaction.update({
+            where: { id: transaction.id },
+            data: {
+              category: pattern.finalCategory,
+              needsReview: false,
+              confidence: confidence,
             direction: getDirectionFromAmount(transaction.amount)
           }
         });
@@ -273,12 +308,12 @@ export class TransactionProcessor {
     // Update transaction in database if it exists
     if (transaction.id) {
       try {
-        await prisma.transaction.update({
-          where: { id: transaction.id },
-          data: {
-            assignedCategory: transferCategory,
-            needsReview: false,
-            confidence: 90,
+                  await prisma.transaction.update({
+            where: { id: transaction.id },
+            data: {
+              category: transferCategory,
+              needsReview: false,
+              confidence: 90,
             direction: getDirectionFromAmount(transaction.amount)
           }
         });
@@ -320,10 +355,9 @@ export class TransactionProcessor {
       try {
         await prisma.transaction.update({
           where: { id: transaction.id },
-          data: {
-            needsReview: true,
-            assignedCategory: null,
-            confidence: null,
+                  data: {
+          needsReview: true,
+          confidence: null,
             direction: getDirectionFromAmount(transaction.amount)
           }
         });
@@ -408,8 +442,8 @@ export class TransactionProcessor {
       userId
     }));
     
-    // Process transactions through our pipeline
-    const stats = await this.processNewTransactions(transactions, userId);
+    // Process transactions through our pipeline (defer AI processing for webhook imports)
+    const stats = await this.processNewTransactions(transactions, userId, true);
     
     // Save Plaid transactions to database
     await this.savePlaidTransactions(plaidTransactions, userId, itemId);
@@ -497,7 +531,7 @@ export class TransactionProcessor {
     
     const stats = {
       totalTransactions: recentTransactions.length,
-      autoAssigned: recentTransactions.filter(t => !t.needsReview && t.assignedCategory).length,
+      autoAssigned: recentTransactions.filter(t => !t.needsReview && t.category && t.category !== 'uncategorized').length,
       needsReview: recentTransactions.filter(t => t.needsReview).length,
       averageConfidence: 0,
       processingEfficiency: 0

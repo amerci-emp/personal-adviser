@@ -27,6 +27,7 @@ model User {
   transactionPatterns  TransactionPattern[]
   userPoints           UserPoints?
   userTasks            UserTask[]
+  userSubTasks         UserSubTask[]
   
   // AI-Powered Category System Relations
   categoryPreferences  UserCategoryPreference[]
@@ -130,13 +131,13 @@ model Transaction {
   
   // New fields for intelligent review system
   needsReview         Boolean     @default(false)
-  assignedCategory    String?
   transactionDate     DateTime?
   source              String      @default("UPLOADED")
   plaidTransactionId  String?     @unique
   direction           String?     // 'inflow' or 'outflow'
   originalText        String?     // Store raw Plaid data
   merchantName        String?     // Cleaned merchant name
+  plaidCategories     String[]    // Plaid categories array e.g. ["INCOME", "INCOME_WAGES"]
   confidence          Decimal?    // Confidence score for categorization
   reviewedAt          DateTime?   // When user reviewed this transaction
   
@@ -217,6 +218,40 @@ model Task {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   userTasks   UserTask[]
+  subTasks    SubTask[]
+}
+
+model SubTask {
+  id          String        @id @default(cuid())
+  taskId      String
+  name        String        // "bank_connection", "ai_analysis", "category_setup"
+  title       String        // "Bank Connection", "AI Analysis", "Category Setup"
+  description String?
+  orderIndex  Int           // 1, 2, 3
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  task        Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userSubTasks UserSubTask[]
+  
+  @@unique([taskId, name])
+  @@unique([taskId, orderIndex])
+}
+
+model UserSubTask {
+  id          String        @id @default(cuid())
+  userId      String
+  subTaskId   String
+  status      SubTaskStatus @default(PENDING)
+  data        Json?         // Store step-specific data (user type, selected categories, etc.)
+  completedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subTask     SubTask       @relation(fields: [subTaskId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, subTaskId])
 }
 
 model UserTask {
@@ -244,6 +279,13 @@ enum TaskStatus {
   COMPLETED
 }
 
+enum SubTaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
 // AI-Powered Category System Models
 
 model Category {
@@ -256,11 +298,19 @@ model Category {
   isSystemDefault       Boolean  @default(true)
   icon                  String?
   defaultColor          String?
+  
+  // Plaid Category Mapping
+  plaidCategories       String[] // Array of Plaid category names that map to this category (PRIMARY and DETAILED)
+  plaidKeywords         String[] // Keywords for fuzzy matching (merchant names, descriptions)
+  plaidPrimary          String?  // Primary Plaid category (e.g., "FOOD_AND_DRINK")
+  plaidDetailed         String[] // Detailed Plaid categories (e.g., ["FOOD_AND_DRINK_COFFEE"])
+  
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   
   userPreferences       UserCategoryPreference[]
   spendingAnalyses      SpendingAnalysis[]
+  userTypePresets       UserTypePreset[]
   
   @@unique([name])
   @@index([mainGroup])
@@ -350,4 +400,21 @@ enum UserType {
   SMALL_BUSINESS_OWNER
   FREELANCER
   UNKNOWN
+}
+
+// User Type Presets - stores which categories are recommended for each user type
+model UserTypePreset {
+  id          String   @id @default(cuid())
+  userType    String   // 'COLLEGE_STUDENT', 'YOUNG_PROFESSIONAL', etc.
+  categoryId  String
+  isDefault   Boolean  @default(true)
+  priority    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  @@unique([userType, categoryId])
+  @@index([userType])
+  @@index([userType, isDefault])
 }

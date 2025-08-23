@@ -1,5 +1,6 @@
 import { PrismaClient, Transaction } from '@prisma/client';
 import { subMonths, isAfter } from 'date-fns';
+import { plaidMappingService } from './plaid-category-mapping-service';
 
 export interface SpendingPatterns {
   totalTransactions: number;
@@ -261,12 +262,42 @@ export class UserTypeDetectionService {
       .filter(t => Number(t.amount) < 0)
       .reduce((sum, t) => sum + Number(t.amount), 0));
 
-    // Analyze category distribution
+    // Analyze category distribution using plaidCategories mapping
     const categoryDistribution: Record<string, any> = {};
     
-    // Group by category (using assignedCategory or category)
+    console.log(`🔍 Analyzing category distribution for ${transactions.length} transactions...`);
+    
+    // Group by category (using mapped plaidCategories)
     for (const transaction of transactions) {
-      const category = transaction.assignedCategory || transaction.category || 'UNKNOWN';
+      let category = 'UNKNOWN';
+      
+      // Use plaidCategories mapping if available
+      if (transaction.plaidCategories && Array.isArray(transaction.plaidCategories) && transaction.plaidCategories.length > 0) {
+        try {
+          const plaidPrimary = transaction.plaidCategories[0];
+          const plaidDetailed = transaction.plaidCategories[1];
+          
+          console.log(`🔄 Mapping transaction ${transaction.id}: [${transaction.plaidCategories.join(', ')}]`);
+          
+          const mapping = await plaidMappingService.mapPlaidCategory(
+            plaidPrimary,
+            plaidDetailed,
+            transaction.merchantName || undefined,
+            transaction.description
+          );
+          
+          category = mapping.ourCategory;
+          console.log(`✅ Mapped to: ${category}`);
+        } catch (error) {
+          console.warn(`⚠️ Failed to map plaidCategories for transaction ${transaction.id}:`, error);
+          category = 'UNKNOWN';
+        }
+      } else {
+        // Fallback to transaction.category if no plaidCategories
+        category = transaction.category || 'UNKNOWN';
+        console.log(`📝 Using fallback category for transaction ${transaction.id}: ${category}`);
+      }
+      
       if (!categoryDistribution[category]) {
         categoryDistribution[category] = {
           totalAmount: 0,
@@ -278,6 +309,8 @@ export class UserTypeDetectionService {
       categoryDistribution[category].totalAmount += Math.abs(Number(transaction.amount));
       categoryDistribution[category].transactionCount += 1;
     }
+    
+    console.log(`📊 Category distribution keys:`, Object.keys(categoryDistribution));
 
     // Calculate percentages
     const totalExpenseAmount = Object.values(categoryDistribution)

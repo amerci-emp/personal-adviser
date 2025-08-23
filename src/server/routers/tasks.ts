@@ -219,10 +219,28 @@ export const tasksRouter = createTRPCRouter({
       let status: "completed" | "available" | "locked" = "locked";
 
       // Auto-complete tasks based on actual user state
-      if (task.id === 'CONNECT_ACCOUNT' && hasCompleteConnection && userTask?.status !== 'COMPLETED') {
-        // Auto-complete the connect account task only when full pipeline works
-        await autoCompleteTask(ctx, user.id, 'CONNECT_ACCOUNT', task.points);
-        status = "completed";
+      if (task.id === 'CONNECT_ACCOUNT') {
+        // Check subtask completion for CONNECT_ACCOUNT
+        const allSubTasks = await ctx.prisma.subTask.findMany({
+          where: { taskId: 'CONNECT_ACCOUNT' },
+          include: {
+            userSubTasks: {
+              where: { userId: user.id },
+            },
+          },
+        });
+
+        const allSubTasksCompleted = allSubTasks.length > 0 && allSubTasks.every(st => {
+          const userProgress = st.userSubTasks[0];
+          return userProgress && userProgress.status === 'COMPLETED';
+        });
+
+        if (allSubTasksCompleted && userTask?.status !== 'COMPLETED') {
+          await autoCompleteTask(ctx, user.id, 'CONNECT_ACCOUNT', task.points);
+          status = "completed";
+        } else {
+          status = allSubTasksCompleted ? "completed" : "available";
+        }
       } else if (task.id === 'REVIEW_TRANSACTIONS' && hasCompleteConnection && hasCategorizedTransactions && userTask?.status !== 'COMPLETED') {
         // Auto-complete the review transactions task
         await autoCompleteTask(ctx, user.id, 'REVIEW_TRANSACTIONS', task.points);
@@ -236,7 +254,8 @@ export const tasksRouter = createTRPCRouter({
       } else {
         // Check if task is available based on prerequisites
         if (task.id === 'CONNECT_ACCOUNT') {
-          status = hasCompleteConnection ? "completed" : "available";
+          // Already handled above with subtask logic - don't override
+          status = status || "available";
         } else if (task.id === 'REVIEW_TRANSACTIONS') {
           status = hasCompleteConnection ? (hasCategorizedTransactions ? "completed" : "available") : "locked";
         } else if (task.id === 'ENABLE_AI_COMPANION') {
