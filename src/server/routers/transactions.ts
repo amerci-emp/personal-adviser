@@ -178,7 +178,7 @@ export const transactionsRouter = createTRPCRouter({
       const transactionForPattern = {
         id: transaction.id,
         description: transaction.description,
-        merchantName: transaction.merchantName,
+        merchantName: transaction.merchantName ?? undefined,
         amount: Number(transaction.amount),
         userId: ctx.session.user.id
       };
@@ -286,7 +286,7 @@ export const transactionsRouter = createTRPCRouter({
           const transactionForPattern = {
             id: transaction.id,
             description: transaction.description,
-            merchantName: transaction.merchantName,
+            merchantName: transaction.merchantName ?? undefined,
             amount: Number(transaction.amount),
             userId: ctx.session.user.id
           };
@@ -377,7 +377,7 @@ export const transactionsRouter = createTRPCRouter({
       const transactionForPattern = {
         id: transaction.id,
         description: transaction.description,
-        merchantName: transaction.merchantName,
+        merchantName: transaction.merchantName ?? undefined,
         amount: Number(transaction.amount),
         userId: ctx.session.user.id
       };

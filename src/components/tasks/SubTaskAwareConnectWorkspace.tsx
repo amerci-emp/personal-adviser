@@ -289,7 +289,7 @@ export function SubTaskAwareConnectWorkspace({
       if (subTaskData?.currentSubTask) {
         await completeSubTask.mutateAsync({ 
           subTaskId: subTaskData.currentSubTask.id,
-          result: { categoriesConfigured: categories.length }
+          data: { categoriesConfigured: categories.length }
         });
       }
       
@@ -558,9 +558,9 @@ export function SubTaskAwareConnectWorkspace({
           <Button 
             onClick={handleStartAIAnalysis}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 text-lg font-medium"
-            disabled={analyzeUserType.isLoading || (analysisSummary?.totalTransactions === 0)}
+            disabled={analyzeUserType.isPending || (analysisSummary?.totalTransactions === 0)}
           >
-            {analyzeUserType.isLoading ? (
+            {analyzeUserType.isPending ? (
               <>
                 <Loader className="w-5 h-5 animate-spin mr-2" />
                 Starting Analysis...
@@ -787,10 +787,10 @@ export function SubTaskAwareConnectWorkspace({
             </Button>
             <Button 
               onClick={handleSaveAndComplete}
-              disabled={selectedCount === 0 || savePreferences.isLoading}
+              disabled={selectedCount === 0 || savePreferences.isPending}
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
             >
-              {savePreferences.isLoading ? (
+              {savePreferences.isPending ? (
                 <>
                   <Loader className="w-4 h-4 mr-2 animate-spin" />
                   Saving...

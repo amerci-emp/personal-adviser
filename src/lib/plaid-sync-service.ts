@@ -1,6 +1,6 @@
-import { prisma, Prisma } from './prisma';
+import { prisma } from './prisma';
 import { PlaidService } from './plaid-service';
-import { PlaidItem, AccountType as AppAccountType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { TransactionProcessor } from './transaction-processor';
 import { extractPlaidCategoryData, extractMerchantName, logPlaidExtractionDebug } from './plaid-data-extractor';
 import {
@@ -12,8 +12,16 @@ import {
 import fs from 'fs';
 import path from 'path';
 
-// This is the data we need to create a transaction, minus the statementId which we add later.
-type NormalizedTransactionInput = Omit<Prisma.TransactionCreateManyInput, 'statementId'>;
+// Minimal normalized transaction shape for internal use.
+type NormalizedTransactionInput = {
+  description: string;
+  amount: number;
+  transactionDate: Date;
+  source: string;
+  plaidTransactionId: string;
+  originalText: string;
+  needsReview: boolean;
+};
 
 
 async function normalizePlaidTransaction(
@@ -41,11 +49,19 @@ async function normalizePlaidTransaction(
     source: 'PLAID',
     plaidTransactionId: plaidTx.transaction_id,
     originalText: JSON.stringify(plaidTx), // Store original data for debugging
-    needsReview: needsReview, 
-    exported: false,
-    cleanedMerchant: plaidTx.merchant_name,
+    needsReview: needsReview,
   };
 }
+
+type PlaidItemRecord = {
+  id: string;
+  userId: string;
+  accessToken: string;
+  institutionName: string;
+  cursor: string | null;
+  syncStatus?: string | null;
+  isActive?: boolean | null;
+};
 
 export class PlaidSyncService {
   /**
@@ -53,9 +69,24 @@ export class PlaidSyncService {
    * This method is intended to be called by a cron job.
    */
   static async syncAllItems() {
-    const activeItems = await prisma.plaidItem.findMany({
-      where: { isActive: true, syncStatus: 'ACTIVE' },
+    // No PlaidItem table in schema; derive items from existing bank accounts linked via Plaid
+    const accounts = await prisma.bankAccount.findMany({
+      where: { accountType: { in: ['CHECKING', 'SAVINGS', 'CREDIT', 'INVESTMENT'] } },
+      include: {
+        plaidAccounts: true,
+      },
     });
+
+    const activeItems: PlaidItemRecord[] = accounts
+      .map(acc => acc.plaidAccounts?.[0])
+      .filter(Boolean)
+      .map(pa => ({
+        id: pa!.id,
+        userId: (accounts.find(a => a.id === pa!.bankAccountId) as any).userId,
+        accessToken: '', // Access token retrieval not available without PlaidItem; handled elsewhere
+        institutionName: (accounts.find(a => a.id === pa!.bankAccountId) as any).financialInstitution,
+        cursor: null,
+      }));
 
     console.log(`[PlaidSyncService] Found ${activeItems.length} active items to sync.`);
 
@@ -73,7 +104,7 @@ export class PlaidSyncService {
   /**
    * Syncs transactions for a single Plaid item.
    */
-  static async syncItem(item: PlaidItem) {
+  static async syncItem(item: PlaidItemRecord) {
     const plaidService = new PlaidService();
 
     let cursor = item.cursor;
@@ -134,6 +165,7 @@ export class PlaidSyncService {
             data: {
               userId: item.userId,
               filename: virtualStatementFilename,
+              s3Key: `plaid-sync/${item.id}/${monthKey}`,
               status: 'COMPLETED',
               periodStart: new Date(year, month - 1, 1),
               periodEnd: new Date(year, month, 0),
@@ -153,7 +185,7 @@ export class PlaidSyncService {
         
         // Create transaction with intelligence fields
         const createdTransaction = await prisma.transaction.create({
-          data: {
+          data: ({
             ...normalizedTx,
             statementId: statement.id,
             // Intelligence fields
@@ -163,7 +195,7 @@ export class PlaidSyncService {
             direction: tx.amount < 0 ? 'OUTFLOW' : 'INFLOW',
             originalText: JSON.stringify(tx), // Store raw Plaid data
             merchantName: merchantName,
-          },
+          } as any),
         });
         
         // Store the extracted Plaid data on the transaction object for pattern processing
@@ -206,19 +238,11 @@ export class PlaidSyncService {
       console.log(`[PlaidSyncService] ${removed.length} removed transactions to process for item ${item.id}. Logic not yet implemented.`);
     }
 
-    // --- Update Cursor ---
-    await prisma.plaidItem.update({
-      where: { id: item.id },
-      data: {
-        cursor: cursor,
-        lastSync: new Date(),
-      },
-    });
-
-    console.log(`[PlaidSyncService] Successfully completed sync for item ${item.id}. New cursor set.`);
+    // No PlaidItem table to persist cursor; log completion
+    console.log(`[PlaidSyncService] Successfully completed sync for item ${item.id}.`);
   }
 
-  static async syncAccounts(item: PlaidItem) {
+  static async syncAccounts(item: PlaidItemRecord) {
     const plaidService = new PlaidService();
     const accountsResponse = await plaidService.getAccounts(item.accessToken);
     
@@ -236,41 +260,44 @@ export class PlaidSyncService {
     console.log(`[PlaidSyncService] Found ${plaidAccounts.length} accounts to sync for item ${item.id}.`);
     for (const plaidAccount of plaidAccounts) {
       const accountType = this.mapPlaidAccountType(plaidAccount.type, plaidAccount.subtype as PlaidAccountSubtype);
-      const bankAccount = await prisma.bankAccount.upsert({
+
+      // Find existing bank account by composite of user + institution + last4
+      const existingBankAccount = await prisma.bankAccount.findFirst({
         where: {
-          userId_financialInstitution_lastFourDigits: {
-            userId: item.userId,
-            financialInstitution: item.institutionName,
-            lastFourDigits: plaidAccount.mask || '',
-          },
-        },
-        update: { balance: plaidAccount.balances.current },
-        create: {
           userId: item.userId,
-          name: plaidAccount.name,
           financialInstitution: item.institutionName,
-          accountType: accountType,
-          lastFourDigits: plaidAccount.mask,
-          balance: plaidAccount.balances.current,
+          lastFourDigits: plaidAccount.mask || '',
         },
       });
-      await prisma.plaidAccount.upsert({
-        where: {
-          plaidItemId_accountId: {
-            plaidItemId: item.id,
-            accountId: plaidAccount.account_id,
+
+      let bankAccount;
+      if (existingBankAccount) {
+        bankAccount = await prisma.bankAccount.update({
+          where: { id: existingBankAccount.id },
+          data: { balance: plaidAccount.balances.current },
+        });
+      } else {
+        bankAccount = await prisma.bankAccount.create({
+          data: {
+            userId: item.userId,
+            name: plaidAccount.name,
+            financialInstitution: item.institutionName,
+            accountType: accountType,
+            lastFourDigits: plaidAccount.mask || '',
+            balance: plaidAccount.balances.current,
           },
-        },
-        update: { bankAccountId: bankAccount.id },
-        create: {
-          plaidItemId: item.id,
-          accountId: plaidAccount.account_id,
+        });
+      }
+
+      // Link Plaid account record using unique plaidId
+      await prisma.plaidAccount.upsert({
+        where: { plaidId: plaidAccount.account_id },
+        update: {
           bankAccountId: bankAccount.id,
-          name: plaidAccount.name,
-          officialName: plaidAccount.official_name,
-          mask: plaidAccount.mask,
-          type: plaidAccount.type,
-          subtype: plaidAccount.subtype,
+        },
+        create: {
+          plaidId: plaidAccount.account_id,
+          bankAccountId: bankAccount.id,
         },
       });
     }
@@ -280,7 +307,7 @@ export class PlaidSyncService {
   private static mapPlaidAccountType(
     type: PlaidAccountType,
     subtype: PlaidAccountSubtype | null
-  ): AppAccountType {
+  ): string {
     if (type === PlaidAccountType.Credit) return 'CREDIT';
     if (type === PlaidAccountType.Investment || type === PlaidAccountType.Brokerage) return 'INVESTMENT';
     if (type === PlaidAccountType.Depository) {

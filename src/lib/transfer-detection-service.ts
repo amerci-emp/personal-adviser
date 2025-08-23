@@ -225,11 +225,11 @@ export class TransferDetectionService {
     // Check if description mentions any of the user's other accounts
     for (const account of userAccounts) {
       const accountIndicators = [
-        account.name.toLowerCase(),
-        account.lastFourDigits,
-        `${account.financialInstitution.toLowerCase()} ${account.lastFourDigits}`,
-        `****${account.lastFourDigits}`
-      ].filter(Boolean);
+        account.name?.toLowerCase(),
+        account.lastFourDigits || undefined,
+        account.financialInstitution ? `${account.financialInstitution.toLowerCase()} ${account.lastFourDigits || ''}`.trim() : undefined,
+        account.lastFourDigits ? `****${account.lastFourDigits}` : undefined
+      ].filter((v): v is string => Boolean(v));
       
       for (const indicator of accountIndicators) {
         if (fullText.includes(indicator)) {

@@ -85,15 +85,6 @@ export function SmartTaskBadge({ onNavigateToTasks }: SmartTaskBadgeProps) {
   //   );
   // }
 
-  // Show no task state for debugging
-  if (!task) {
-    return (
-      <div className="w-full bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
-        No tasks available
-      </div>
-    );
-  }
-
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.8, y: -20 }}

@@ -197,7 +197,7 @@ export const statementRouter = createTRPCRouter({
             filename: input.filename,
             userId: ctx.session.user.id,
             status: StatementStatus.UPLOADED,
-            storageUrl: input.fileUrl
+            s3Key: input.fileUrl
           },
         });
 
@@ -298,7 +298,6 @@ export const statementRouter = createTRPCRouter({
               where: { id: statement.id },
               data: {
                 status: StatementStatus.COMPLETED,
-                processedTimestamp: new Date(),
                 periodStart: periodInfo.start,
                 periodEnd: periodInfo.end,
                 accounts: {
@@ -319,8 +318,6 @@ export const statementRouter = createTRPCRouter({
               where: { id: statement.id },
               data: {
                 status: StatementStatus.FAILED,
-                errorMessage: error instanceof Error ? error.message : "Unknown error",
-                processedTimestamp: new Date(),
               },
             });
           }
@@ -358,7 +355,7 @@ export const statementRouter = createTRPCRouter({
         });
       }
 
-      if (!statement.storageUrl) {
+      if (!statement.s3Key) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Statement has no storage URL",
@@ -375,7 +372,7 @@ export const statementRouter = createTRPCRouter({
         // Process the file with Vision AI
         const fileType = statement.filename.endsWith(".pdf") ? "application/pdf" : "image/jpeg";
         const processingResult = await processUploadedFile(
-          statement.storageUrl,
+          statement.s3Key,
           fileType
         );
 
@@ -404,7 +401,6 @@ export const statementRouter = createTRPCRouter({
           where: { id: statement.id },
           data: {
             status: StatementStatus.COMPLETED,
-            processedTimestamp: new Date(),
             periodStart: periodInfo.start,
             periodEnd: periodInfo.end,
           },
@@ -474,8 +470,6 @@ export const statementRouter = createTRPCRouter({
           where: { id: statement.id },
           data: {
             status: StatementStatus.FAILED,
-            errorMessage: error instanceof Error ? error.message : "Unknown error",
-            processedTimestamp: new Date(),
           },
         });
         

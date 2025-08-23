@@ -185,7 +185,7 @@ export const categoriesRouter = createTRPCRouter({
             enabled: true, // AI recommended these, so enable by default
             customName: rec.displayName, // Use the display name as custom name
             monthlyBudget: budgetSuggestion?.suggestedAmount || null, // Use AI-suggested budget if available
-            priority: rec.priority || index // Use recommendation priority or order
+            priority: index // Use array order as priority
           };
         });
 
@@ -201,7 +201,6 @@ export const categoriesRouter = createTRPCRouter({
           data: {
             userId,
             changeType: 'CATEGORY_UPDATE',
-            previousData: null, // No previous preferences
             newData: categoryPreferences,
             reason: 'INITIAL_AI_SUGGESTIONS'
           }

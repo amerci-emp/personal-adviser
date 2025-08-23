@@ -567,10 +567,10 @@ export function EnhancedConnectAccountWorkspace({
         </Button>
         <Button 
           onClick={handleSavePreferences}
-          disabled={selectedCount === 0 || savePreferences.isLoading}
+          disabled={selectedCount === 0 || savePreferences.isPending}
           className="flex-1 bg-green-600 hover:bg-green-700"
         >
-          {savePreferences.isLoading ? (
+          {savePreferences.isPending ? (
             <>
               <Loader className="w-4 h-4 mr-2 animate-spin" />
               Saving...
@@ -584,7 +584,8 @@ export function EnhancedConnectAccountWorkspace({
         </Button>
       </div>
     </div>
-  );
+    );
+}
 
   const renderCompletion = () => (
     <div className="text-center space-y-6">

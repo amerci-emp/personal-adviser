@@ -87,7 +87,7 @@ export const bankAccountRouter = createTRPCRouter({
       accounts: accounts.map(account => ({
         id: account.id,
         name: account.name || 'Unknown Account',
-        institutionName: account.institutionName || 'Unknown Bank',
+        institutionName: account.financialInstitution || 'Unknown Bank',
         accountType: account.accountType,
         lastFourDigits: account.lastFourDigits,
         transactionCount: account._count.transactions,
@@ -185,9 +185,6 @@ export const bankAccountRouter = createTRPCRouter({
             accountType: input.accountType,
             lastFourDigits: input.lastFourDigits,
             balance: input.balance ? input.balance.toString() : null,
-            notes: input.notes,
-            color: input.color,
-            institutionLogo: input.institutionLogo,
           },
         });
 
@@ -269,9 +266,6 @@ export const bankAccountRouter = createTRPCRouter({
             accountType: input.accountType,
             lastFourDigits: input.lastFourDigits,
             balance: input.balance !== undefined ? input.balance.toString() : undefined,
-            notes: input.notes,
-            color: input.color,
-            institutionLogo: input.institutionLogo,
           },
         });
 

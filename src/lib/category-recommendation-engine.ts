@@ -276,7 +276,7 @@ export class CategoryRecommendationEngine {
       merchantPatterns[merchant] = (merchantPatterns[merchant] || 0) + 1;
       
       // Extract keywords from descriptions
-      const words = merchant.split(/\s+/).filter(word => word.length > 3);
+      const words = merchant.split(/\s+/).filter((word: string) => word.length > 3);
       for (const word of words) {
         descriptionPatterns[word] = (descriptionPatterns[word] || 0) + 1;
       }

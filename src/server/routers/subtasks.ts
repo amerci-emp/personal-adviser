@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/trpc";
 import { TRPCError } from "@trpc/server";
+import { Prisma } from "@prisma/client";
 
 export const subtasksRouter = createTRPCRouter({
   // Get all subtasks for a specific task
@@ -265,7 +266,7 @@ export const subtasksRouter = createTRPCRouter({
         update: {
           status: 'PENDING',
           completedAt: null,
-          data: null,
+          data: Prisma.DbNull,
           updatedAt: new Date(),
         },
         create: {
@@ -273,7 +274,7 @@ export const subtasksRouter = createTRPCRouter({
           subTaskId: input.subTaskId,
           status: 'PENDING',
           completedAt: null,
-          data: null,
+          data: Prisma.DbNull,
         },
       });
 
