@@ -6,6 +6,11 @@ export class BackgroundJobRunner {
     console.log('Background job processing not implemented yet');
     return { success: true, message: 'No jobs to process' };
   }
+
+  // Compatibility alias for callers expecting runOnce()
+  static async runOnce() {
+    return this.processJobs();
+  }
 }
 
 export async function triggerGenerateAiProfile() {
