@@ -98,9 +98,9 @@ export function SmartTaskBadge({ onNavigateToTasks }: SmartTaskBadgeProps) {
       className={`w-full ${colors.bg} ${colors.text} rounded-lg shadow-lg p-4 flex items-center justify-between`}
     >
       <div>
-        <h4 className="font-bold">{task.title}</h4>
-        <p className="text-sm opacity-90">{task.description}</p>
-        <p className="text-xs font-bold opacity-75 mt-1">{task.points} Points</p>
+        <h4 className="font-bold">{task?.title ?? "No task available"}</h4>
+        <p className="text-sm opacity-90">{task?.description ?? "You're all caught up!"}</p>
+        <p className="text-xs font-bold opacity-75 mt-1">{task?.points ?? 0} Points</p>
       </div>
       <Button
         onClick={onNavigateToTasks}
